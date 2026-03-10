@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    background:
+      radial-gradient(ellipse at 0%   0%,   rgba(59,  90, 220, 0.28) 0%, transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgba(99, 102, 241, 0.20) 0%, transparent 55%),
+      #131318;
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    border-left: 1px solid var(--glass-border);
+    -webkit-app-region: drag;
+    user-select: none;
+    animation: none;
+  }
+
+  /* ── Collapsed opacity ──────────────────────────────── */
+  body.collapsed { opacity: 0.2; transition: opacity 200ms ease; }
+  body.collapsed:hover { opacity: 0.65; }
+  body.collapsed.pulsing {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(245,158,11,0.4);
+    transition: opacity 200ms ease;
+  }
+
+  .header {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(34,197,94,0.5);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .settings-btn {
+    -webkit-app-region: no-drag;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.12s;
+    opacity: 0;
+  }
+  .header:hover .settings-btn { opacity: 0.6; }
+  .settings-btn:hover { opacity: 1 !important; background: var(--inset-bg); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .content {
+    height: calc(100vh - 52px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Manual query */
+  .query-bar {
+    -webkit-app-region: no-drag;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .query-input {
+    flex: 1;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 7px 11px;
+    font-size: 12px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .query-input::placeholder { color: var(--text-secondary); }
+  .query-input:focus { border-color: rgba(59,130,246,0.4); }
+
+  .query-btn {
+    -webkit-app-region: no-drag;
+    background: var(--accent-blue);
+    border: none;
+    border-radius: 7px;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    color: white;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+  }
+  .query-btn:hover { opacity: 0.8; }
+
+  /* Answer cards */
+  .answers-section { padding: 12px 14px; flex: 1; }
+
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .answer-card {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      var(--inset-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    animation: appear 0.3s ease;
+  }
+
+  .card-question { font-size: 11px; color: var(--text-secondary); margin-bottom: 7px; font-style: italic; line-height: 1.4; }
+  .card-answer   { font-size: 12.5px; color: var(--text-primary); line-height: 1.55; }
+
+  .card-meta { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+
+  .card-source {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text-secondary);
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .card-source.web {
+    color: rgba(129,140,248,0.65);
+    background: rgba(129,140,248,0.07);
+    border-color: rgba(129,140,248,0.14);
+  }
+  .web-badge-sm {
+    font-family: 'DM Mono', monospace;
+    font-size: 8px; font-weight: 500;
+    color: #818cf8;
+    background: rgba(129,140,248,0.10);
+    border: 1px solid rgba(129,140,248,0.22);
+    border-radius: 3px; padding: 1px 5px;
+    letter-spacing: 0.08em;
+  }
+
+  /* Transcript feed */
+  .transcript-section {
+    padding: 14px 14px 16px;
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .transcript-feed {
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .utterance { margin-bottom: 8px; animation: appear 0.2s ease; }
+
+  .utterance-speaker {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--accent-blue);
+    margin-bottom: 2px;
+    letter-spacing: 0.06em;
+  }
+
+  .utterance-text { font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; }
+
+  .empty-state {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    padding: 24px 0;
+    opacity: 0.6;
+  }
+
+  .conf-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+  }
+  .conf-badge.conf-high   { color: var(--accent-green); background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.2); }
+  .conf-badge.conf-medium { color: var(--accent-amber); background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); }
+  .conf-badge.conf-low    { color: var(--accent-red);   background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2); }
+
+  .card-thumbs { display: flex; gap: 3px; margin-left: auto; }
+  .thumb-btn {
+    background: none;
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    cursor: pointer;
+    width: 22px; height: 20px;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    transition: background 0.12s;
+  }
+  .thumb-btn:hover { background: var(--inset-bg); }
+  .thumb-btn.flash-up   { background: rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.5); }
+  .thumb-btn.flash-down { background: rgba(239,68,68,0.2);  border-color: rgba(239,68,68,0.4); }
+
+  /* Engagement widget */
+  #engagementWidget {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    -webkit-app-region: no-drag;
+  }
+
+  .eng-score-block { display: flex; align-items: baseline; gap: 5px; min-width: 60px; }
+  .eng-score-num { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500; line-height: 1; transition: color 0.4s; }
+  .eng-label { font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55; }
+  .eng-trend { font-size: 14px; flex-shrink: 0; transition: color 0.4s; }
+  #engSparkline { flex: 1; height: 24px; max-width: 80px; }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+  }
+  .tab {
+    flex: 1;
+    padding: 9px 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: center;
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+    -webkit-app-region: no-drag;
+  }
+  .tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-blue);
+    background: rgba(59,130,246,0.06);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+  /* ─── Drawer collapse ─────────────────────────────────────────────────── */
+  #drawerToggle {
+    -webkit-app-region: no-drag;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.12s, color 0.12s;
+    margin-right: 8px;
+  }
+  #drawerToggle:hover { background: var(--glass-border-strong); color: var(--text-primary); }
+  body.collapsed #drawerToggle { margin-right: 0; }
+
+  /* ─── Avatar strip (shown when collapsed) ──────────────────────────────── */
+  #avatarStrip {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 4px;
+    gap: 6px;
+    flex: 1;
+    overflow: hidden;
+  }
+  body.collapsed #avatarStrip  { display: flex; }
+  body.collapsed .content      { display: none; }
+  body.collapsed .header .logo { display: none; }
+  body.collapsed .header .settings-btn { display: none; }
+  body.collapsed .header       { justify-content: center; padding: 9px 0; border-bottom: none; }
+
+  .avatar-circle { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; position: relative; cursor: default; overflow: visible; }
+  .avatar-img    { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; }
+  .avatar-initials {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Mono', monospace; font-size: 8px; font-weight: 500;
+    color: var(--text-primary);
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+  }
+
+  .avatar-circle.active-speaker .avatar-img,
+  .avatar-circle.active-speaker .avatar-initials {
+    box-shadow: 0 0 0 2px var(--accent-green), 0 0 8px rgba(34,197,94,0.4);
+    animation: speakerPulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes speakerPulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--accent-green), 0 0 6px rgba(34,197,94,0.4); }
+    50%       { box-shadow: 0 0 0 2px var(--accent-green), 0 0 12px rgba(34,197,94,0.7); }
+  }
+
+  .avatar-circle.pulse-nudge .avatar-img,
+  .avatar-circle.pulse-nudge .avatar-initials { box-shadow: 0 0 0 2px var(--accent-amber); }
+
+  .avatar-overflow {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Mono', monospace; font-size: 8px;
+    color: var(--text-secondary); flex-shrink: 0;
+  }
+
+  #nudgeDot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-amber);
+    box-shadow: 0 0 6px rgba(245,158,11,0.7);
+    display: none;
+    margin-top: 4px;
+  }
+  #nudgeDot.show { display: block; animation: pulse 1.5s ease-in-out infinite; }
+
+  /* Coaching cards */
+  .coaching-card {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(251,146,60,0.2);
+    background: rgba(251,146,60,0.06);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    font-weight: 500;
+    animation: appear 0.25s ease;
+  }
+  .coaching-card.green { border-color: rgba(34,197,94,0.2); background: rgba(34,197,94,0.06); color: #86efac; }
+  .coaching-card-meta { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text-secondary); margin-top: 4px; opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <button id="drawerToggle" title="Collapse">‹</button>
+  <span class="logo">Kalara</span>
+  <div class="header-right">
+    <div class="live-dot"></div>
+    <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
+  </div>
+</div>
+
+<div id="avatarStrip">
+  <div id="nudgeDot"></div>
+</div>
+
+<div class="content">
+
+  <div class="query-bar">
+    <input class="query-input" id="queryInput" placeholder="Ask anything..." type="text" />
+    <button class="query-btn" id="queryBtn">→</button>
+  </div>
+
+  <div id="engagementWidget" style="display:none">
+    <div class="eng-score-block">
+      <span class="eng-score-num" id="engScoreNum">50</span>
+      <span class="eng-label" id="engLabelText">Neutral</span>
+    </div>
+    <span class="eng-trend" id="engTrend">→</span>
+    <svg id="engSparkline" viewBox="0 0 80 24" preserveAspectRatio="none">
+      <polyline id="engSparklineLine" points="" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab active" data-tab="answers">Answers</div>
+    <div class="tab" data-tab="coaching">Coaching</div>
+  </div>
+
+  <div class="tab-panel active" id="tabAnswers">
+    <div class="answers-section">
+      <div id="answersFeed">
+        <div class="empty-state">Waiting for questions...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabCoaching">
+    <div class="answers-section" style="padding-top:10px;">
+      <div id="coachingFeed">
+        <div class="empty-state">No coaching nudges yet</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="transcript-section">
+    <div class="section-label" style="margin-bottom:10px">Live Transcript</div>
+    <div class="transcript-feed" id="transcriptFeed">
+      <div class="empty-state">Call not started</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const answersFeed   = document.getElementById('answersFeed');
+  const transcriptFeed = document.getElementById('transcriptFeed');
+  const queryInput    = document.getElementById('queryInput');
+  const queryBtn      = document.getElementById('queryBtn');
+  const coachingFeed  = document.getElementById('coachingFeed');
+
+  // Settings gear icon
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    window.brioAPI.openSettings();
+  });
+
+  // Tab switching
+  let firstCoachingNudge = true;
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1)).classList.add('active');
+    });
+  });
+
+  let firstAnswer    = true;
+  let firstTranscript = true;
+  let showConfidence  = false;
+  window.brioAPI.onShowConfidence(val => { showConfidence = val; });
+
+  function addAnswerCard(payload) {
+    if (firstAnswer) { answersFeed.innerHTML = ''; firstAnswer = false; }
+    const card = document.createElement('div');
+    card.className = 'answer-card';
+
+    const { question, answer, sources = [], chunkIds = [], fromWeb } = payload;
+
+    const sourceTags = sources.slice(0, 2).map(s => {
+      if (fromWeb) {
+        try {
+          const domain = new URL(s).hostname.replace(/^www\./, '');
+          return `<span class="card-source web" title="${s}">${domain}</span>`;
+        } catch { return `<span class="card-source web">${s}</span>`; }
+      }
+      return `<span class="card-source">${s.replace(/\.[^.]+$/, '')}</span>`;
+    }).join('');
+
+    const webBadgeHtml = fromWeb ? '<span class="web-badge-sm">WEB</span>' : '';
+    const thumbsHtml = chunkIds.length
+      ? `<div class="card-thumbs"><button class="thumb-btn" data-vote="up">👍</button><button class="thumb-btn" data-vote="down">👎</button></div>`
+      : '';
+    const confHtml = (showConfidence && !fromWeb && payload.confidence)
+      ? `<span class="conf-badge conf-${payload.confidence}">${payload.confidence}</span>`
+      : '';
+
+    card.innerHTML = `
+      <div class="card-question">"${question}"</div>
+      <div class="card-answer">${answer}</div>
+      <div class="card-meta">${webBadgeHtml}${sourceTags}${confHtml}${thumbsHtml}</div>
+    `;
+
+    if (chunkIds.length) {
+      card.querySelectorAll('.thumb-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const vote = btn.dataset.vote;
+          btn.classList.add(vote === 'up' ? 'flash-up' : 'flash-down');
+          setTimeout(() => btn.classList.remove('flash-up', 'flash-down'), 600);
+          window.brioAPI.submitFeedback(chunkIds, vote).catch(() => {});
+        });
+      });
+    }
+
+    answersFeed.prepend(card);
+  }
+
+  function addUtterance(payload) {
+    if (firstTranscript) { transcriptFeed.innerHTML = ''; firstTranscript = false; }
+    const el = document.createElement('div');
+    el.className = 'utterance';
+    el.innerHTML = `
+      <div class="utterance-speaker">${payload.speaker || 'Speaker'}</div>
+      <div class="utterance-text">${payload.text}</div>
+    `;
+    transcriptFeed.appendChild(el);
+    transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+    while (transcriptFeed.children.length > 30) transcriptFeed.removeChild(transcriptFeed.firstChild);
+  }
+
+  window.brioAPI.onNewAnswer(addAnswerCard);
+
+  window.brioAPI.onCoachingNudge((nudge) => {
+    if (firstCoachingNudge) { coachingFeed.innerHTML = ''; firstCoachingNudge = false; }
+    const card = document.createElement('div');
+    card.className = `coaching-card${nudge.color === 'green' ? ' green' : ''}`;
+    card.innerHTML = `
+      <div>${nudge.message}</div>
+      <div class="coaching-card-meta">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+    `;
+    coachingFeed.prepend(card);
+    while (coachingFeed.children.length > 20) coachingFeed.removeChild(coachingFeed.lastChild);
+    const coachTab = document.querySelector('[data-tab="coaching"]');
+    if (!coachTab.classList.contains('active')) {
+      coachTab.style.color = nudge.color === 'green' ? 'var(--accent-green)' : '#fb923c';
+      setTimeout(() => { coachTab.style.color = ''; }, 2000);
+    }
+  });
+
+  // Engagement score widget
+  const engWidget    = document.getElementById('engagementWidget');
+  const engScoreNum  = document.getElementById('engScoreNum');
+  const engLabelText = document.getElementById('engLabelText');
+  const engTrend     = document.getElementById('engTrend');
+  const engSparkLine = document.getElementById('engSparklineLine');
+
+  window.brioAPI.onEngagementScore((data) => {
+    const { score, trend, label, color, history } = data;
+    engWidget.style.display = 'flex';
+    engScoreNum.textContent = score;
+    engScoreNum.style.color = color;
+    engLabelText.textContent = label;
+    engTrend.textContent = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→';
+    engTrend.style.color = trend === 'up' ? 'var(--accent-green)' : trend === 'down' ? 'var(--accent-red)' : 'var(--text-secondary)';
+
+    const sparkSvg = document.getElementById('engSparkline');
+    sparkSvg.style.display = data.showSparkline ? '' : 'none';
+    if (data.showSparkline && history && history.length > 1) {
+      const pts = history.map((h, i) => {
+        const x = (i / (history.length - 1)) * 80;
+        const y = 24 - (h.score / 100) * 22 - 1;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      engSparkLine.setAttribute('points', pts);
+      engSparkLine.setAttribute('stroke', color);
+      engSparkLine.setAttribute('stroke-opacity', '0.6');
+    }
+  });
+
+  // ─── Drawer collapse/expand ─────────────────────────────────────────────────
+  const drawerToggle = document.getElementById('drawerToggle');
+  const avatarStrip  = document.getElementById('avatarStrip');
+  const nudgeDot     = document.getElementById('nudgeDot');
+  let isCollapsed    = false;
+
+  function setCollapsed(collapsed) {
+    isCollapsed = collapsed;
+    document.body.classList.toggle('collapsed', collapsed);
+    drawerToggle.textContent = collapsed ? '›' : '‹';
+    drawerToggle.title = collapsed ? 'Expand' : 'Collapse';
+    const count = Object.keys(participants).length;
+    window.brioAPI.sidebarResize(collapsed, count);
+    if (!collapsed) nudgeDot.classList.remove('show');
+  }
+
+  drawerToggle.addEventListener('click', () => setCollapsed(!isCollapsed));
+
+  window.brioAPI.onSidebarCollapsedState(val => {
+    isCollapsed = val;
+    document.body.classList.toggle('collapsed', val);
+    drawerToggle.textContent = val ? '›' : '‹';
+    drawerToggle.title = val ? 'Expand' : 'Collapse';
+  });
+
+  // ─── Participant avatar tracking ───────────────────────────────────────────
+  let participants = {};
+  let activeSpeaker = null;
+
+  function getInitials(name) {
+    const parts = (name || '?').trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+    return (parts[0][0] || '?').toUpperCase();
+  }
+
+  function renderAvatarElement(p) {
+    const wrap = document.createElement('div');
+    wrap.className = 'avatar-circle';
+    wrap.dataset.pid = p.id;
+    wrap.title = p.name + (p.email ? ` (${p.email})` : '');
+
+    if (p.gravatar) {
+      const img = document.createElement('img');
+      img.className = 'avatar-img';
+      img.src = p.gravatar;
+      img.alt = p.name;
+      img.onerror = () => {
+        img.remove();
+        const init = document.createElement('div');
+        init.className = 'avatar-initials';
+        init.textContent = getInitials(p.name);
+        wrap.appendChild(init);
+      };
+      wrap.appendChild(img);
+    } else {
+      const init = document.createElement('div');
+      init.className = 'avatar-initials';
+      init.textContent = getInitials(p.name);
+      wrap.appendChild(init);
+    }
+    return wrap;
+  }
+
+  function renderAvatarStrip() {
+    Array.from(avatarStrip.children).forEach(child => { if (child.id !== 'nudgeDot') child.remove(); });
+
+    const sorted  = Object.values(participants).sort((a, b) => (b.lastSpoke || 0) - (a.lastSpoke || 0));
+    const visible  = sorted.slice(0, 5);
+    const overflow = sorted.length - visible.length;
+
+    visible.forEach(p => {
+      const el = renderAvatarElement(p);
+      if (activeSpeaker === p.id) el.classList.add('active-speaker');
+      avatarStrip.insertBefore(el, nudgeDot);
+    });
+
+    if (overflow > 0) {
+      const ovfl = document.createElement('div');
+      ovfl.className = 'avatar-overflow';
+      ovfl.textContent = `+${overflow}`;
+      ovfl.title = `${overflow} more participants`;
+      avatarStrip.insertBefore(ovfl, nudgeDot);
+    }
+  }
+
+  window.brioAPI.onParticipantJoined(p => {
+    participants[p.id] = { ...p, lastSpoke: participants[p.id]?.lastSpoke || 0 };
+    renderAvatarStrip();
+    // Re-send resize with updated avatar count
+    if (isCollapsed) {
+      window.brioAPI.sidebarResize(true, Object.keys(participants).length);
+    }
+  });
+
+  window.brioAPI.onParticipantLeft(p => {
+    delete participants[p.id];
+    renderAvatarStrip();
+    if (isCollapsed) {
+      window.brioAPI.sidebarResize(true, Object.keys(participants).length);
+    }
+  });
+
+  window.brioAPI.onTranscriptUpdate(payload => {
+    addUtterance(payload);
+    if (payload.speaker) {
+      const match = Object.values(participants).find(p =>
+        p.name && payload.speaker && p.name.toLowerCase().includes(payload.speaker.toLowerCase())
+      );
+      const pid = match?.id || payload.speaker;
+      activeSpeaker = pid;
+      if (match) {
+        match.lastSpoke = Date.now();
+        if (isCollapsed) renderAvatarStrip();
+      }
+      avatarStrip.querySelectorAll('.avatar-circle').forEach(el => {
+        el.classList.toggle('active-speaker', el.dataset.pid === pid);
+      });
+    }
+  });
+
+  window.brioAPI.onCoachingNudge(() => {
+    if (isCollapsed) {
+      nudgeDot.classList.add('show');
+      document.body.classList.add('pulsing');
+      setTimeout(() => {
+        nudgeDot.classList.remove('show');
+        document.body.classList.remove('pulsing');
+      }, 5000);
+    }
+  });
+
+  window.brioAPI.onFocusQuery(() => {
+    queryInput.focus();
+    queryInput.select();
+  });
+
+  async function runQuery() {
+    const q = queryInput.value.trim();
+    if (!q) return;
+    queryInput.value = '';
+
+    if (firstAnswer) { answersFeed.innerHTML = ''; firstAnswer = false; }
+    const loadingCard = document.createElement('div');
+    loadingCard.className = 'answer-card';
+    loadingCard.innerHTML = `
+      <div class="card-question">"${q}"</div>
+      <div class="card-answer" style="color:var(--text-secondary);font-style:italic">Searching docs...</div>
+    `;
+    answersFeed.prepend(loadingCard);
+
+    const result = await window.brioAPI.query(q);
+    loadingCard.remove();
+    addAnswerCard({
+      question: q,
+      answer: result.answer || 'No relevant info found in your documents.',
+      sources: result.sources || [],
+      chunkIds: result.chunkIds || [],
+      fromWeb: result.fromWeb || false,
+    });
+  }
+
+  queryBtn.addEventListener('click', runQuery);
+  queryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
+
+  // Theme
+  window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});
+  window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+</script>
+</body>
+</html>

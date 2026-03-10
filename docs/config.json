@@ -1,0 +1,26 @@
+{
+  "hotkey": "CommandOrControl+Shift+Space",
+  "sidebarCollapsed": true,
+  "coaching": {
+    "enabled": false
+  },
+  "googleAuth": {
+    "accessToken": "ya29.a0ATkoCc6AqdMXzkZApmO4QAV1SKcLLAInXWJUzOL-TNRutW8zxIn3QVJWpwsaTkPqL6BSWa8M6KyrXZTZDR7UNaWjUy4v2H3BPw2TBs5XqB7axkAhYXl7AETbimYr2QhgxvSVrk_5IliUHvl-XFLlwpqNEOB7RKYfsIAAMtDJMlKTPz7K8Pz10_HOZnwOjkfp85wH1b6YaCgYKAbASARYSFQHGX2MiwcVdW-JmmBdsqSromwUgxA0207",
+    "refreshToken": "1//06PlnOwv83v_4CgYIARAAGAYSNwF-L9IrvIjmD04NEpE0s7X7IPkzonI_ztkdtGW2-t01TkNwBn3V3elY5xM6r819YNyG3KoHcIQ",
+    "expiresAt": 1773144126810,
+    "name": "Charlie Kahn",
+    "email": "charlie@karmanlabs.com",
+    "photo": "https://lh3.googleusercontent.com/a-/ALV-UjVjhyiax99k20wVgdoqqUkiDKs83HX-4WjKsxoEdrOjISDG_GufDyQwoLJqs8ls34NjVtfXimcDF2vlVnqRsMSVtFzmIhEd8iHd-VVaAgBxneNn5T-i0TtJFNzBIpx5v-K8ppgN_Ho2YbocOqTfl-XlK-84JliUVvX0B3e-6fxu-vL-HFcz5-670w3bSMaFs4pXVMn-3CodmHzCR3RQA9a1qSWnter-ctd9PgEk9X97Jk0GERiJD7RVxw_VeAw5XRnzddFBEEtcWs89C_f5xvpLNdJf3uDCLjWOm2cmzHtz1raua3Obv7vjbkQhKAcay5PKMWCkvut2io-ZI9xTfSmr4jg25oTax5NdjSwjtvRNYXe5BQiNh0HcusKiaQirAaSbwvRErV-yuaD_Yno-EOm8PgWiIKxQNbDBNnGOXNzhUPMlW-xEwxZu_cnGKcTTj4vWkOviZ3kysSK7I3ozTP5hqTflHWF13SwdDVZAjROA3kgluSnpjdFh4HB3HNL27pl0eE0X7-Aj-9CLwKDqqZUQ7KjwHaKYI2XWUn1vL0sdRjjuxq6gWqYAcIEWjstK-Q7i_g9S00ByadbePjz-z9liI6-eyWmGpHNzOxl1EyO2qXBVk-49b1MmZjxUcUWIp-pCAx_Gmd278lrkf4TZ1vnEP_QRi3Y-SV8T4lE67tvFV32NVhuHWVUDlX0lmr8BVpxhBiQ88AbL4jzQsNNnh_NMehtJOCeFtbCG0b6iOzE2-lovko6uUS1UhdYXS3ayyy-HlFM96D2l4SJSVFyZWH7NVKVuksKOuBweajTFeGlpIGo0n9vxyXLumX6THlMOU1e9koj6iPfs2-zso2jSVK0qFFBLRoRDrZ7Tv9b2DPi-lh2XoskAPqviE_bF_jPWGiehZkd5cj1rleVW6xXo7XyYPbTjY9Sd7yr3cEQ-aaj5TOTyABKMT22J7o8M0MBnXs3-34k4YHzb6UyuH20v3jMTMMmodJJveeppCF7BUV5-Y1gBYE94Ynty6txeEcU-QmNWIKwRIAxHNqDK_9je03UxAAjt3Bvnaq_IOTOF1SuJ0LZG4QtC=s96-c"
+  },
+  "webSearch": {
+    "live": true,
+    "liveQuality": "bestMatch",
+    "preCall": true,
+    "postCall": true
+  },
+  "lastProjectId": "proj_1772999323355_69da1918",
+  "botName": "",
+  "autoJoinMeetings": false,
+  "autoJoinMinutesBefore": 2,
+  "theme": "dark"
+}

@@ -1,0 +1,41 @@
+{
+  "name": "brio-pilot",
+  "version": "0.1.0",
+  "description": "Brio real-time pitch intelligence overlay",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron .",
+    "build": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "chromadb": "^1.7.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "mammoth": "^1.7.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "ws": "^8.16.0"
+  },
+  "build": {
+    "appId": "com.brio.pilot",
+    "productName": "Brio Pilot",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "protocols": [
+      {
+        "name": "Kalara",
+        "schemes": ["kalara"],
+        "role": "Viewer"
+      }
+    ]
+  }
+}

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: #131318;
+    color: var(--text-primary);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ────────────────────────────────────────────── */
+  .header {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    background: #131318;
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+  }
+
+  .file-icon { font-size: 16px; flex-shrink: 0; }
+
+  .file-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+  }
+
+  .btn-open {
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 5px 11px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .btn-open:hover { border-color: rgba(255,255,255,0.18); color: var(--text-primary); }
+
+  .btn-close {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .btn-close:hover {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.3);
+    color: var(--accent-red);
+  }
+
+  /* ── Content area ──────────────────────────────────────── */
+  .content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* PDF */
+  .pdf-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+
+  /* Text / DOCX */
+  .text-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--inset-bg);
+    height: 100%;
+  }
+
+  .docx-note {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  pre {
+    font-family: 'DM Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Markdown */
+  .md-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 36px;
+    height: 100%;
+  }
+
+  .md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+    color: var(--text-primary);
+    margin: 1.4em 0 0.5em;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .md-body h1 { font-size: 22px; margin-top: 0; }
+  .md-body h2 { font-size: 18px; }
+  .md-body h3 { font-size: 15px; }
+  .md-body p  { font-size: 13.5px; color: rgba(255,255,255,0.78); line-height: 1.7; margin-bottom: 0.85em; }
+  .md-body a  { color: var(--accent-blue); text-decoration: none; }
+  .md-body a:hover { text-decoration: underline; }
+  .md-body ul, .md-body ol { padding-left: 1.5em; margin-bottom: 0.85em; }
+  .md-body li { font-size: 13.5px; color: rgba(255,255,255,0.78); line-height: 1.65; }
+  .md-body code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--accent-indigo, #a5b4fc);
+  }
+  .md-body pre {
+    background: #0d0d12;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin-bottom: 0.85em;
+  }
+  .md-body pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    color: rgba(255,255,255,0.82);
+  }
+  .md-body blockquote {
+    border-left: 3px solid var(--glass-border);
+    margin: 0 0 0.85em;
+    padding: 2px 0 2px 14px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .md-body hr { border: none; border-top: 1px solid var(--glass-border); margin: 1.5em 0; }
+  .md-body table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 0.85em; }
+  .md-body th, .md-body td { border: 1px solid var(--glass-border); padding: 6px 10px; text-align: left; }
+  .md-body th { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+  .md-body td { color: rgba(255,255,255,0.75); }
+
+  /* Image */
+  .img-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 24px;
+    background: #0d0d12;
+  }
+  .img-wrap img {
+    max-width: 100%;
+    max-height: calc(100vh - 60px);
+    border-radius: 4px;
+    object-fit: contain;
+  }
+
+  /* Unsupported */
+  .unsupported {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text-secondary);
+  }
+  .unsupported-icon { font-size: 40px; opacity: 0.4; }
+  .unsupported-msg  { font-size: 14px; opacity: 0.6; }
+  .btn-open-default {
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 9px 18px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .btn-open-default:hover { border-color: rgba(255,255,255,0.2); }
+
+  /* Loading */
+  .loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="file-icon" id="headerIcon">📄</span>
+  <span class="file-name" id="headerFileName">Loading…</span>
+  <div class="header-actions">
+    <button class="btn-open" id="btnOpenApp">Open in App</button>
+    <button class="btn-close" id="btnClose">✕</button>
+  </div>
+</div>
+
+<div class="content" id="content">
+  <div class="loading">Loading…</div>
+</div>
+
+<script>
+  let currentFilePath = null;
+
+  const extIcons = {
+    pdf: '📑', txt: '📝', md: '📋', docx: '📄',
+    png: '🖼', jpg: '🖼', jpeg: '🖼', gif: '🖼', webp: '🖼',
+  };
+
+  document.getElementById('btnClose').addEventListener('click', () => window.close());
+  document.getElementById('btnOpenApp').addEventListener('click', () => {
+    if (currentFilePath) window.brioAPI.openInDefaultApp(currentFilePath);
+  });
+
+  async function init() {
+    const filePath = await window.brioAPI.getPreviewFilePath();
+    if (!filePath) {
+      document.getElementById('content').innerHTML = '<div class="loading">No file path received</div>';
+      return;
+    }
+    currentFilePath = filePath;
+    const fileName = filePath.split('/').pop();
+    const ext      = fileName.split('.').pop().toLowerCase();
+
+    document.getElementById('headerFileName').textContent = fileName;
+    document.getElementById('headerIcon').textContent = extIcons[ext] || '📄';
+
+    const content = document.getElementById('content');
+
+    if (ext === 'pdf') {
+      renderPdf(filePath, content);
+    } else if (ext === 'txt') {
+      await renderText(filePath, content);
+    } else if (ext === 'md') {
+      await renderMarkdown(filePath, content);
+    } else if (ext === 'docx') {
+      await renderDocx(filePath, content);
+    } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      renderImage(filePath, content);
+    } else {
+      renderUnsupported(filePath, content);
+    }
+  }
+
+  // ── PDF ────────────────────────────────────────────────────────────────────
+  function renderPdf(filePath, container) {
+    container.innerHTML = `<iframe class="pdf-frame" src="file://${filePath}"></iframe>`;
+  }
+
+  // ── TXT ────────────────────────────────────────────────────────────────────
+  async function renderText(filePath, container) {
+    try {
+      const res  = await fetch('file://' + filePath);
+      const text = await res.text();
+      container.innerHTML = `<div class="text-wrap"><pre></pre></div>`;
+      container.querySelector('pre').textContent = text;
+    } catch (e) {
+      showError(container, e.message);
+    }
+  }
+
+  // ── Markdown ───────────────────────────────────────────────────────────────
+  async function renderMarkdown(filePath, container) {
+    try {
+      const [res] = await Promise.all([
+        fetch('file://' + filePath),
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js'),
+      ]);
+      const text = await res.text();
+      container.innerHTML = `<div class="md-wrap"><div class="md-body"></div></div>`;
+      container.querySelector('.md-body').innerHTML = marked.parse(text);
+    } catch (e) {
+      showError(container, e.message);
+    }
+  }
+
+  // ── DOCX ───────────────────────────────────────────────────────────────────
+  async function renderDocx(filePath, container) {
+    try {
+      const [res] = await Promise.all([
+        fetch('file://' + filePath),
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'),
+      ]);
+      const buf    = await res.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: buf });
+      container.innerHTML = `<div class="text-wrap"><div class="docx-note">Formatting not preserved — showing extracted text</div><pre></pre></div>`;
+      container.querySelector('pre').textContent = result.value;
+    } catch (e) {
+      showError(container, e.message);
+    }
+  }
+
+  // ── Image ──────────────────────────────────────────────────────────────────
+  function renderImage(filePath, container) {
+    container.innerHTML = `<div class="img-wrap"><img src="file://${filePath}" alt="" /></div>`;
+  }
+
+  // ── Unsupported ────────────────────────────────────────────────────────────
+  function renderUnsupported(filePath, container) {
+    container.innerHTML = `
+      <div class="unsupported">
+        <div class="unsupported-icon">📎</div>
+        <div class="unsupported-msg">Preview not available for this file type</div>
+        <button class="btn-open-default" id="btnOpenDefault">Open in Default App</button>
+      </div>
+    `;
+    container.querySelector('#btnOpenDefault').addEventListener('click', () => {
+      window.brioAPI.openInDefaultApp(filePath);
+    });
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function showError(container, msg) {
+    container.innerHTML = `<div class="unsupported"><div class="unsupported-msg" style="color:var(--accent-red)">Error: ${escHtml(msg)}</div></div>`;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+      const s   = document.createElement('script');
+      s.src     = src;
+      s.onload  = resolve;
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  // Theme
+  window.brioAPI.getConfig()
+    .then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark'))
+    .catch(() => {});
+
+  init();
+</script>
+</body>
+</html>

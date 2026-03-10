@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    padding: 44px 28px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    background:
+      radial-gradient(ellipse at 15% 0%,   rgba(59,  90, 220, 0.30) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 100%, rgba(99, 102, 241, 0.22) 0%, transparent 55%),
+      #0d0d12;
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    animation: appear 200ms ease-out;
+    -webkit-app-region: drag;
+    overflow-y: auto;
+  }
+
+  h2, p, label, input, button, .row, .project-list, .status { -webkit-app-region: no-drag; }
+
+  h2 { font-size: 16px; font-weight: 600; }
+  p  { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+
+  label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type="text"]:focus { border-color: rgba(59,130,246,0.5); }
+
+  button {
+    background: var(--accent-blue);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 10px 18px;
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  button.danger {
+    background: rgba(239,68,68,0.12);
+    color: var(--accent-red);
+    border: 1px solid rgba(239,68,68,0.2);
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  button.danger:hover { background: rgba(239,68,68,0.2); opacity: 1; }
+
+  .project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+  }
+
+  /* ── Project item + expand ──────────────────────────────── */
+  .project-item {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .project-item:hover { border-color: rgba(255, 255, 255, 0.14); }
+  .project-item.open  { border-color: rgba(59, 130, 246, 0.40); }
+
+  .project-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .project-icon { font-size: 18px; flex-shrink: 0; }
+  .project-info { flex: 1; min-width: 0; }
+  .project-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .project-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .project-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .expand-arrow {
+    display: inline-block;
+    font-size: 16px;
+    color: var(--text-secondary);
+    transition: transform 200ms ease;
+    line-height: 1;
+  }
+  .project-item.open .expand-arrow { transform: rotate(90deg); }
+
+  /* ── Expand section ─────────────────────────────────────── */
+  .project-expand {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 200ms ease;
+  }
+  .project-item.open .project-expand {
+    max-height: 700px;
+  }
+
+  .expand-inner {
+    padding: 0 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid var(--glass-border);
+    padding-top: 12px;
+  }
+
+  .expand-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ── Drop zone ──────────────────────────────────────────── */
+  .drop-zone {
+    border: 1.5px dashed var(--glass-border-strong);
+    border-radius: 10px;
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: rgba(255,255,255,0.015);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: rgba(59, 130, 246, 0.5);
+    background: rgba(59, 130, 246, 0.04);
+  }
+  .drop-icon  { font-size: 22px; margin-bottom: 6px; }
+  .drop-label { font-size: 12.5px; color: var(--text-secondary); }
+  .drop-sub   { font-size: 11px; color: var(--text-secondary); opacity: 0.55; margin-top: 3px; }
+  .file-input { display: none; }
+
+  /* ── Doc file list ──────────────────────────────────────── */
+  .doc-file-list { display: flex; flex-direction: column; gap: 5px; }
+
+  .doc-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+  .doc-file-icon  { font-size: 13px; flex-shrink: 0; }
+  .doc-file-name  {
+    flex: 1;
+    color: var(--text-primary);
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: opacity 0.12s;
+  }
+  .doc-file-name:hover { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
+  .doc-file-meta  { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-secondary); flex-shrink: 0; white-space: nowrap; }
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 4px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+    opacity: 0.45;
+  }
+  .del-btn:hover { color: var(--accent-red); opacity: 1; }
+
+  .doc-status {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-height: 14px;
+  }
+  .doc-status.err { color: var(--accent-red); }
+  .doc-status.ok  { color: var(--accent-green); }
+
+  /* ── General ────────────────────────────────────────────── */
+  .empty {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 24px 0;
+    font-style: italic;
+  }
+
+  .status {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-height: 16px;
+  }
+  .status.err { color: var(--accent-red); }
+  .status.ok  { color: var(--accent-green); }
+</style>
+</head>
+<body>
+
+  <div>
+    <h2>Projects</h2>
+    <p style="margin-top:6px">Create named projects, each with their own document set. Click a project to manage its documents.</p>
+  </div>
+
+  <div>
+    <label>New Project</label>
+    <div class="row">
+      <input type="text" id="nameInput" placeholder="e.g. Brio, Agency, Demo" maxlength="60" />
+      <button id="createBtn">Create</button>
+    </div>
+    <div class="status" id="status" style="margin-top:8px"></div>
+  </div>
+
+  <div>
+    <label>Your Projects</label>
+    <div class="project-list" id="projectList">
+      <div class="empty">No projects yet</div>
+    </div>
+  </div>
+
+  <script>
+    const nameInput = document.getElementById('nameInput');
+    const createBtn = document.getElementById('createBtn');
+    const statusEl  = document.getElementById('status');
+    const listEl    = document.getElementById('projectList');
+
+    let openItem = null;
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function showStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status ' + cls;
+      setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status'; }, 3000);
+    }
+
+    // ── Project list ──────────────────────────────────────────────────────────
+
+    async function loadProjects() {
+      try {
+        const projects = await window.brioAPI.getProjects();
+        renderProjects(projects);
+      } catch (e) {
+        listEl.innerHTML = '<div class="empty" style="color:var(--accent-red)">Could not load projects — is the app server running?</div>';
+        console.error('[projects] loadProjects failed:', e);
+      }
+    }
+
+    function renderProjects(projects) {
+      const prevOpenId = openItem?._projectId;
+      openItem = null;
+      listEl.innerHTML = '';
+      if (!projects.length) {
+        listEl.innerHTML = '<div class="empty">No projects yet</div>';
+        return;
+      }
+      for (const p of projects) {
+        const item = createProjectItem(p);
+        listEl.appendChild(item);
+        // Re-expand previously open project
+        if (p.id === prevOpenId) {
+          item.classList.add('open');
+          openItem = item;
+          loadDocsForItem(p.id, item._docFileList, item._docStatus);
+        }
+      }
+    }
+
+    function createProjectItem(p) {
+      const item = document.createElement('div');
+      item.className = 'project-item';
+      item.dataset.id = p.id;
+      item._projectId = p.id;
+
+      // ── Header ─────────────────────────────────────────────
+      const header = document.createElement('div');
+      header.className = 'project-header';
+
+      const icon = document.createElement('div');
+      icon.className = 'project-icon';
+      icon.textContent = '📁';
+
+      const info = document.createElement('div');
+      info.className = 'project-info';
+      info.innerHTML = `
+        <div class="project-name">${escHtml(p.name)}</div>
+        <div class="project-meta">Created ${new Date(p.createdAt).toLocaleDateString()}</div>
+      `;
+
+      const actions = document.createElement('div');
+      actions.className = 'project-actions';
+
+      const arrow = document.createElement('span');
+      arrow.className = 'expand-arrow';
+      arrow.textContent = '›';
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'danger';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteProject(p.id, p.name);
+      });
+
+      actions.appendChild(arrow);
+      actions.appendChild(delBtn);
+      header.appendChild(icon);
+      header.appendChild(info);
+      header.appendChild(actions);
+
+      header.addEventListener('click', () => toggleProject(item));
+
+      // ── Expand section ─────────────────────────────────────
+      const expand = document.createElement('div');
+      expand.className = 'project-expand';
+
+      const inner = document.createElement('div');
+      inner.className = 'expand-inner';
+
+      const expandLabel = document.createElement('div');
+      expandLabel.className = 'expand-label';
+      expandLabel.textContent = 'Documents';
+
+      // Drop zone
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.multiple = true;
+      fileInput.accept = '.pdf,.docx,.txt,.md';
+      fileInput.className = 'file-input';
+
+      const dropZone = document.createElement('div');
+      dropZone.className = 'drop-zone';
+      dropZone.innerHTML = `
+        <div class="drop-icon">📄</div>
+        <div class="drop-label">Drop files here or click to upload</div>
+        <div class="drop-sub">PDF, DOCX, TXT, MD supported</div>
+      `;
+      dropZone.appendChild(fileInput);
+
+      const docFileList = document.createElement('div');
+      docFileList.className = 'doc-file-list';
+
+      const docStatus = document.createElement('div');
+      docStatus.className = 'doc-status';
+
+      dropZone.addEventListener('click', () => fileInput.click());
+      dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) uploadFiles(p.id, e.dataTransfer.files, docFileList, docStatus);
+      });
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) uploadFiles(p.id, fileInput.files, docFileList, docStatus);
+      });
+
+      inner.appendChild(expandLabel);
+      inner.appendChild(dropZone);
+      inner.appendChild(docFileList);
+      inner.appendChild(docStatus);
+      expand.appendChild(inner);
+
+      item.appendChild(header);
+      item.appendChild(expand);
+
+      item._docFileList = docFileList;
+      item._docStatus   = docStatus;
+
+      return item;
+    }
+
+    function toggleProject(item) {
+      if (item === openItem) {
+        item.classList.remove('open');
+        openItem = null;
+        return;
+      }
+      if (openItem) openItem.classList.remove('open');
+      item.classList.add('open');
+      openItem = item;
+      loadDocsForItem(item._projectId, item._docFileList, item._docStatus);
+    }
+
+    async function deleteProject(id, name) {
+      if (!confirm(`Delete "${name}"? This will remove all its documents.`)) return;
+      if (openItem?._projectId === id) openItem = null;
+      try {
+        await window.brioAPI.deleteProject(id);
+        await loadProjects();
+        showStatus('Project deleted', 'ok');
+      } catch (e) {
+        showStatus('Error: ' + e.message, 'err');
+      }
+    }
+
+    createBtn.addEventListener('click', async () => {
+      const name = nameInput.value.trim();
+      if (!name) return;
+      createBtn.disabled = true;
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+      try {
+        const project = await window.brioAPI.createProject(name);
+        nameInput.value = '';
+        await loadProjects();
+        // Auto-expand the new project
+        const newItem = listEl.querySelector(`[data-id="${project.id}"]`);
+        if (newItem) toggleProject(newItem);
+        showStatus('Project created', 'ok');
+      } catch (e) {
+        showStatus('Error: ' + e.message, 'err');
+      } finally {
+        createBtn.disabled = false;
+      }
+    });
+
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') createBtn.click(); });
+
+    // ── Documents ─────────────────────────────────────────────────────────────
+
+    async function loadDocsForItem(projectId, docFileList, docStatus) {
+      try {
+        const data = await window.brioAPI.getProjectDocs(projectId);
+        renderDocs(data.files || [], docFileList, docStatus, projectId);
+      } catch (e) {
+        docStatus.textContent = 'Error loading documents';
+        docStatus.className = 'doc-status err';
+      }
+    }
+
+    function renderDocs(files, docFileList, docStatus, projectId) {
+      docFileList.innerHTML = '';
+      if (!files.length) {
+        docStatus.textContent = 'No documents yet — drop files above to upload';
+        docStatus.className = 'doc-status';
+        return;
+      }
+      for (const f of files) {
+        const item = document.createElement('div');
+        item.className = 'doc-file-item';
+
+        const sizeStr = formatFileSize(f.size);
+        const dateStr = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString() : '';
+        const meta    = [sizeStr, dateStr].filter(Boolean).join(' · ');
+
+        item.innerHTML = `
+          <span class="doc-file-icon">📄</span>
+          <span class="doc-file-name" title="${escHtml(f.originalName)}">${escHtml(f.originalName)}</span>
+          ${meta ? `<span class="doc-file-meta">${escHtml(meta)}</span>` : ''}
+          <button class="del-btn" title="Remove">✕</button>
+        `;
+        item.querySelector('.doc-file-name').addEventListener('click', () => {
+          if (f.filePath) window.brioAPI.openDocPreview(f.filePath, f.originalName);
+        });
+        item.querySelector('.del-btn').addEventListener('click', () =>
+          removeDoc(projectId, f.storedName, docFileList, docStatus)
+        );
+        docFileList.appendChild(item);
+      }
+      docStatus.textContent = `${files.length} document${files.length === 1 ? '' : 's'}`;
+      docStatus.className = 'doc-status ok';
+    }
+
+    async function removeDoc(projectId, storedName, docFileList, docStatus) {
+      try {
+        await window.brioAPI.deleteProjectDoc(projectId, storedName);
+        await loadDocsForItem(projectId, docFileList, docStatus);
+      } catch (e) {
+        docStatus.textContent = 'Error removing document';
+        docStatus.className = 'doc-status err';
+      }
+    }
+
+    async function uploadFiles(projectId, files, docFileList, docStatus) {
+      docStatus.textContent = `Uploading ${files.length} file(s)…`;
+      docStatus.className = 'doc-status';
+      const formData = new FormData();
+      for (const f of files) formData.append('files', f);
+      try {
+        const r = await fetch(`http://localhost:3847/projects/${projectId}/docs/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const result = await r.json();
+        const errors = (result.results || []).filter(f => f.status === 'error');
+        await loadDocsForItem(projectId, docFileList, docStatus);
+        if (errors.length) {
+          docStatus.textContent = `Upload error: ${errors.map(f => f.error || f.name).join(', ')}`;
+          docStatus.className = 'doc-status err';
+        }
+      } catch (e) {
+        docStatus.textContent = 'Upload failed: ' + e.message;
+        docStatus.className = 'doc-status err';
+      }
+    }
+
+    loadProjects();
+
+    // Theme
+    window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});
+    window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+  </script>
+</body>
+</html>

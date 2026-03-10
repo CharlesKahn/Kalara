@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+<style>
+  html, body {
+    background: transparent;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  body {
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  .menu-card {
+    position: relative;
+    background:
+      radial-gradient(ellipse at 20% 0%,   rgba(0, 47, 236, 0.12) 0%, transparent 30%),
+      linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, transparent 90%),
+      rgba(19, 19, 24, 0.98);
+    backdrop-filter: blur(48px) saturate(1.8);
+    -webkit-backdrop-filter: blur(48px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    box-shadow:
+      0 20px 48px rgba(0, 0, 0, 0.35),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
+    padding: 8px;
+    overflow: hidden;
+    animation: appear 120ms ease-out;
+  }
+
+  /* ── Auth header ──────────────────────────────────────── */
+
+  /* Sign-in card (shown when no token) */
+  .auth-signin-card {
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 14px 12px 12px;
+    margin-bottom: 2px;
+  }
+
+  .auth-signin-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .auth-app-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: rgba(59, 90, 220, 0.18);
+    border: 1px solid rgba(59, 90, 220, 0.30);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .auth-signin-msg {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .btn-google-signin {
+    -webkit-app-region: no-drag;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    background: var(--accent-blue);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 7px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.12s;
+  }
+  .btn-google-signin:hover { opacity: 0.85; }
+
+  .google-icon-sm {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  /* Profile card (shown when signed in) */
+  .auth-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 4px 10px;
+  }
+
+  .profile-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-blue);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+
+  .profile-info { flex: 1; min-width: 0; }
+
+  .profile-settings-btn {
+    flex-shrink: 0;
+    align-self: flex-start;
+    width: 28px;
+    height: 28px;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    font-size: 14px;
+    -webkit-app-region: no-drag;
+    transition: color 0.12s, background 0.12s;
+  }
+  .profile-settings-btn:hover {
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .profile-settings-btn .settings-icon {
+    width: 14px;
+    height: 14px;
+    display: block;
+    transform: rotate(90deg);
+  }
+
+  .profile-name {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .profile-email {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 4px;
+  }
+
+  /* ── Menu items ──────────────────────────────────────── */
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.88);
+    gap: 10px;
+    transition: background 80ms ease;
+    -webkit-app-region: no-drag;
+  }
+  .menu-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+  #modePassive { margin-top: 10px; }
+  #modePassive, #modeAwareness, #modeEyeline { height: 34px; }
+  #modeEyeline { margin-bottom: 10px; }
+
+  /* Mode indicator dot */
+  .item-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+    transition: background 150ms, box-shadow 150ms;
+  }
+  .menu-item.active .item-dot {
+    background: var(--accent-blue);
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  }
+  #modeAwareness.active .item-dot {
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  }
+  #modeEyeline.active .item-dot {
+    background: var(--accent-indigo);
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
+  }
+
+  .item-label { flex: 1; }
+
+  /* Inline toggle for coaching */
+  .item-toggle {
+    width: 28px;
+    height: 16px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.14);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 180ms;
+  }
+  .item-toggle::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: white;
+    top: 3px;
+    left: 3px;
+    transition: transform 180ms;
+  }
+  .item-toggle.on { background: var(--accent-blue); }
+  .item-toggle.on::after { transform: translateX(12px); }
+
+  .separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 0;
+  }
+
+  /* ── Upcoming meetings ────────────────────────────────── */
+  #meetingsSection { display: none; }
+
+  #meetingsList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .no-meetings-msg {
+    padding: 7px 12px 9px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.32);
+    text-align: center;
+  }
+
+  .meeting-item {
+    display: flex;
+    align-items: center;
+    height: 44px;
+    padding: 0 12px 0 14px;
+    border-radius: 8px;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    gap: 9px;
+    transition: background 80ms ease, border-color 80ms ease;
+    -webkit-app-region: no-drag;
+  }
+  .meeting-item:hover { background: rgba(255, 255, 255, 0.06); }
+  .meeting-item.in-progress {
+    border-left-color: var(--accent-green);
+    background: rgba(34, 197, 94, 0.06);
+  }
+  .meeting-item.in-progress:hover { background: rgba(34, 197, 94, 0.09); }
+
+  .meeting-item.bot-active {
+    border-left-color: #a855f7;
+    background: rgba(168, 85, 247, 0.07);
+  }
+  .meeting-item.bot-active:hover { background: rgba(168, 85, 247, 0.11); }
+  .meeting-item.bot-active .meeting-title { color: rgba(255,255,255,0.95); }
+  .meeting-item.bot-active .meeting-time  { color: #c084fc; }
+  .meeting-item.bot-active .live-dot      { display: block; background: #a855f7; }
+
+  .meeting-cal-icon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    opacity: 0.45;
+  }
+
+  .meeting-title {
+    flex: 1;
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .meeting-item.in-progress .meeting-title { color: rgba(255, 255, 255, 0.95); }
+
+  .meeting-time-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .meeting-time {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.40);
+    white-space: nowrap;
+  }
+  .meeting-item.in-progress .meeting-time { color: var(--accent-green); }
+
+  @keyframes pulse-dot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%       { transform: scale(1.3); opacity: 0.75; }
+  }
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    flex-shrink: 0;
+    animation: pulse-dot 2s ease-in-out infinite;
+    display: none;
+  }
+  .meeting-item.in-progress .live-dot { display: block; }
+
+  .item-danger { }
+  .item-danger .item-label { color: rgba(255, 255, 255, 0.5); }
+  .item-danger:hover { background: rgba(239, 68, 68, 0.08); }
+  .item-danger:hover .item-label { color: var(--accent-red); }
+
+  /* Custom tooltip (same as meeting-alert; native title often doesn't show in Electron) */
+  #meetingTooltip {
+    position: fixed;
+    z-index: 100;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-primary);
+    background: rgba(30, 30, 36, 0.98);
+    border: 1px solid var(--glass-border);
+    border-radius: 5px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  #meetingTooltip.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="meetingTooltip" aria-hidden="true"></div>
+<div class="menu-card">
+
+  <!-- ── Auth header (sign-in or profile) ─────────────── -->
+  <div id="authSignIn" style="display:none">
+    <div class="auth-signin-card">
+      <div class="auth-signin-header">
+        <div class="auth-app-logo">⬡</div>
+        <div class="auth-signin-msg">Sign in to unlock calendar sync and participant recognition</div>
+        <button type="button" class="profile-settings-btn" id="btnTraySettingsSignIn" title="Settings" aria-label="Settings"><svg class="settings-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg></button>
+      </div>
+      <button class="btn-google-signin" id="btnTraySignIn">
+        <svg class="google-icon-sm" viewBox="0 0 24 24">
+          <path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" opacity=".9"/>
+          <path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" opacity=".9"/>
+          <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" opacity=".9"/>
+          <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" opacity=".9"/>
+        </svg>
+        Continue with Google
+      </button>
+    </div>
+    <div class="separator"></div>
+  </div>
+
+  <div id="authProfile" style="display:none">
+    <div class="auth-profile-card">
+      <div class="profile-avatar" id="trayAvatar"></div>
+      <div class="profile-info">
+        <div class="profile-name"  id="trayName">—</div>
+        <div class="profile-email" id="trayEmail">—</div>
+      </div>
+      <button type="button" class="profile-settings-btn" id="btnTraySettings" title="Settings" aria-label="Settings"><svg class="settings-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg></button>
+    </div>
+    <div class="separator"></div>
+  </div>
+
+  <!-- ── Upcoming meetings ─────────────────────────────── -->
+  <div id="meetingsSection">
+    <div id="meetingsList"></div>
+    <div class="separator"></div>
+  </div>
+
+  <!-- ── Mode group ─────────────────────────────────────── -->
+  <div class="menu-item active" id="modePassive">
+    <div class="item-dot"></div>
+    <div class="item-label">Passive</div>
+  </div>
+  <div class="menu-item" id="modeAwareness">
+    <div class="item-dot"></div>
+    <div class="item-label">Awareness Mode</div>
+  </div>
+  <div class="menu-item" id="modeEyeline">
+    <div class="item-dot"></div>
+    <div class="item-label">Eyeline Mode</div>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- ── Session + Projects ─────────────────────────────── -->
+  <div class="menu-item" id="itemStart">
+    <div class="item-label">Start Session</div>
+  </div>
+  <div class="menu-item" id="itemEnd" style="display:none">
+    <div class="item-label">End Session</div>
+  </div>
+  <div class="menu-item" id="itemProjects">
+    <div class="item-label">Manage Projects</div>
+  </div>
+
+  <div class="separator"></div>
+
+  <div class="menu-item item-danger" id="itemQuit">
+    <div class="item-label">Quit</div>
+  </div>
+
+</div>
+
+<script>
+  // Theme init
+  window.brioAPI.getConfig()
+    .then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark'))
+    .catch(() => {});
+  window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const authSignIn  = document.getElementById('authSignIn');
+  const authProfile = document.getElementById('authProfile');
+  const trayAvatar  = document.getElementById('trayAvatar');
+  const trayName    = document.getElementById('trayName');
+  const trayEmail   = document.getElementById('trayEmail');
+
+  function applyAuthState(status) {
+    if (status?.signedIn) {
+      // Always hide sign-in card, always show profile card when signed in
+      authSignIn.style.display  = 'none';
+      authProfile.style.display = '';
+      trayName.textContent  = status.name  || 'Google Account';
+      trayEmail.textContent = status.email || '';
+      if (status.photo) {
+        trayAvatar.innerHTML = `<img src="${status.photo}" alt="" onerror="this.parentElement.textContent='${getInitials(status.name)}'">`;
+      } else {
+        trayAvatar.textContent = getInitials(status.name);
+      }
+    } else {
+      authSignIn.style.display  = '';
+      authProfile.style.display = 'none';
+    }
+  }
+
+  function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : (parts[0][0] || '?').toUpperCase();
+  }
+
+  // Update live when OAuth completes or account is disconnected
+  window.brioAPI.onGoogleAuthComplete((auth) => {
+    // auth is the full googleAuth object (has accessToken) or null on disconnect
+    const signedIn = !!(auth?.accessToken);
+    applyAuthState({ signedIn, name: auth?.name || '', email: auth?.email || '', photo: auth?.photo || '' });
+    if (signedIn) {
+      // Fetch fresh meetings now that we have a token
+      window.brioAPI.getUpcomingMeetings().catch(() => []).then(meetings => {
+        renderMeetings(meetings, true);
+        requestAnimationFrame(() => {
+          const h = document.querySelector('.menu-card').scrollHeight;
+          window.brioAPI.resizeTrayMenu(h);
+        });
+      });
+    } else {
+      renderMeetings([], false);
+    }
+  });
+
+  // Google sign-in button
+  document.getElementById('btnTraySignIn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.brioAPI.connectGoogle();
+    // Close tray so the browser can take focus
+    setTimeout(() => window.brioAPI.closeTrayMenu(), 150);
+  });
+
+  // ── Upcoming meetings ─────────────────────────────────────────────────────
+  const meetingsSection = document.getElementById('meetingsSection');
+  const meetingsList    = document.getElementById('meetingsList');
+  const meetingTooltip  = document.getElementById('meetingTooltip');
+
+  function showMeetingTooltip(el, text) {
+    meetingTooltip.textContent = text;
+    meetingTooltip.classList.add('visible');
+    const rect = el.getBoundingClientRect();
+    meetingTooltip.style.left = (rect.left + rect.width / 2) + 'px';
+    meetingTooltip.style.top = (rect.top - 6) + 'px';
+    meetingTooltip.style.transform = 'translate(-50%, -100%)';
+  }
+  function hideMeetingTooltip() {
+    meetingTooltip.classList.remove('visible');
+  }
+
+  function formatMeetingTime(startIso, endIso) {
+    if (!startIso) return '';
+    const now     = Date.now();
+    const startMs = new Date(startIso).getTime();
+    const endMs   = endIso ? new Date(endIso).getTime() : null;
+    // In-progress
+    if (startMs <= now && endMs && endMs > now) {
+      const minsLeft = Math.ceil((endMs - now) / 60000);
+      if (minsLeft < 60) return `${minsLeft} min left`;
+      const h = Math.floor(minsLeft / 60), m = minsLeft % 60;
+      return m > 0 ? `${h}h ${m}m left` : `${h}h left`;
+    }
+    // Future
+    const diffSec = Math.round((startMs - now) / 1000);
+    if (diffSec > 60) {
+      const diffMin = Math.round((startMs - now) / 60000);
+      if (diffMin < 60) return `In ${diffMin} min`;
+      const h = Math.floor(diffMin / 60), m = diffMin % 60;
+      return m > 0 ? `In ${h}h ${m}m` : `In ${h}h`;
+    }
+    if (diffSec >= 0) return 'Starting now';
+    return '';
+  }
+
+  function isInProgress(m) {
+    if (!m.startIso || !m.endIso) return false;
+    const now = Date.now();
+    return new Date(m.startIso).getTime() <= now && new Date(m.endIso).getTime() > now;
+  }
+
+  function renderMeetings(meetings, signedIn) {
+    hideMeetingTooltip();
+    meetingsList.innerHTML = '';
+    if (!signedIn) {
+      meetingsSection.style.display = 'none';
+      return;
+    }
+    // Filter out ended meetings
+    const now    = Date.now();
+    const active = (meetings || []).filter(m => !m.endIso || new Date(m.endIso).getTime() > now);
+    if (!active.length) {
+      meetingsList.innerHTML = '<div class="no-meetings-msg">No upcoming meetings</div>';
+      meetingsSection.style.display = 'block';
+      return;
+    }
+    active.forEach(m => {
+      const live      = isInProgress(m);
+      const botActive = !!(state.botOnlyMeetingUrl && m.meetLink === state.botOnlyMeetingUrl);
+      const row       = document.createElement('div');
+      row.className   = 'meeting-item' + (botActive ? ' bot-active' : live ? ' in-progress' : '');
+      if (m.meetLink) row.dataset.meetlink = m.meetLink;
+      row.innerHTML = `
+        <svg class="meeting-cal-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="2.5" width="14" height="12" rx="2" stroke="white" stroke-width="1.3"/>
+          <path d="M1 6h14" stroke="white" stroke-width="1.3"/>
+          <path d="M5 1v3M11 1v3" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span class="meeting-title">${m.title || 'Meeting'}</span>
+        <span class="meeting-time-wrap">
+          <span class="live-dot"></span>
+          <span class="meeting-time" data-startiso="${m.startIso || ''}" data-endiso="${m.endIso || ''}">${formatMeetingTime(m.startIso, m.endIso)}</span>
+        </span>
+      `;
+      row.addEventListener('click', () => {
+        if (m.meetLink) {
+          window.brioAPI.trayPrefillMeetingUrl(m.meetLink);
+        } else {
+          window.brioAPI.trayOpenRecallSetup();
+          setTimeout(() => window.brioAPI.closeTrayMenu(), 200);
+        }
+      });
+      if (botActive) {
+        row.addEventListener('mouseenter', (e) => showMeetingTooltip(e.currentTarget, 'Kalara is in this meeting'));
+        row.addEventListener('mouseleave', hideMeetingTooltip);
+      }
+      meetingsList.appendChild(row);
+    });
+    meetingsSection.style.display = 'block';
+  }
+
+  // Every 30s: remove ended meetings, update time displays
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    meetingsList.querySelectorAll('.meeting-item').forEach(row => {
+      const timeEl = row.querySelector('.meeting-time');
+      if (!timeEl) return;
+      const endIso = timeEl.dataset.endiso;
+      if (endIso && new Date(endIso).getTime() <= now) {
+        row.remove();
+        changed = true;
+      } else {
+        timeEl.textContent = formatMeetingTime(timeEl.dataset.startiso, endIso || null);
+      }
+    });
+    if (changed) {
+      if (!meetingsList.querySelector('.meeting-item')) {
+        meetingsList.innerHTML = '<div class="no-meetings-msg">No upcoming meetings</div>';
+      }
+      requestAnimationFrame(() => {
+        const h = document.querySelector('.menu-card').scrollHeight;
+        window.brioAPI.resizeTrayMenu(h);
+      });
+    }
+  }, 30000);
+
+  // Single auth fetch — drives auth header
+  const authPromise = window.brioAPI.getGoogleAuthStatus().catch(() => null);
+  authPromise.then(s => applyAuthState(s)).catch(() => applyAuthState(null));
+
+  const trayStatePromise = window.brioAPI.getTrayState().catch(() => null);
+
+  // Meetings: show cached instantly, then silently refresh in background
+  const meetingsPromise = (async () => {
+    const cached = await window.brioAPI.getCachedMeetings().catch(() => []);
+    if (cached.length === 0) {
+      // Cache cold — show loading hint while background fetch runs
+      meetingsList.innerHTML = '<div class="no-meetings-msg" style="opacity:0.5">Checking calendar…</div>';
+      meetingsSection.style.display = 'block';
+    } else {
+      renderMeetings(cached, true);
+    }
+    // Background refresh — silently update if data changed
+    window.brioAPI.getFreshMeetings().then(fresh => {
+      renderMeetings(fresh, true);
+      requestAnimationFrame(() => {
+        const h = document.querySelector('.menu-card').scrollHeight;
+        window.brioAPI.resizeTrayMenu(h);
+      });
+    }).catch(() => {
+      if (cached.length === 0) renderMeetings([], true);
+    });
+  })();
+
+  // Resize once cached content + tray state are both known
+  Promise.all([meetingsPromise, trayStatePromise]).then(() => {
+    requestAnimationFrame(() => {
+      const h = document.querySelector('.menu-card').scrollHeight;
+      window.brioAPI.resizeTrayMenu(h);
+    });
+  });
+
+  // ── Tray state ────────────────────────────────────────────────────────────
+  let state = { mode: 'passive', sessionActive: false, botOnlyMeetingUrl: null };
+
+  function applyState(s) {
+    state = s;
+    hideMeetingTooltip();
+    document.getElementById('modePassive').classList.toggle('active',   s.mode === 'passive');
+    document.getElementById('modeAwareness').classList.toggle('active', s.mode === 'awareness');
+    document.getElementById('modeEyeline').classList.toggle('active',   s.mode === 'eyeline');
+    document.getElementById('itemStart').style.display = s.sessionActive ? 'none' : '';
+    document.getElementById('itemEnd').style.display   = s.sessionActive ? '' : 'none';
+    // Update bot-active highlight on already-rendered meeting rows
+    meetingsList.querySelectorAll('.meeting-item[data-meetlink]').forEach(row => {
+      const isBotActive = s.botOnlyMeetingUrl && row.dataset.meetlink === s.botOnlyMeetingUrl;
+      row.classList.toggle('bot-active', !!isBotActive);
+      row.title = isBotActive ? 'Kalara bot is in the meeting' : '';
+    });
+  }
+
+  trayStatePromise.then(s => { if (s) applyState(s); });
+  window.brioAPI.onTrayStateUpdate(applyState);
+
+  // ── Mode buttons ──────────────────────────────────────────────────────────
+  document.getElementById('modePassive').addEventListener('click', () => {
+    applyState({ ...state, mode: 'passive' });
+    window.brioAPI.traySetMode('passive');
+    setTimeout(() => window.brioAPI.closeTrayMenu(), 200);
+  });
+  document.getElementById('modeAwareness').addEventListener('click', () => {
+    applyState({ ...state, mode: 'awareness' });
+    window.brioAPI.traySetMode('awareness');
+    setTimeout(() => window.brioAPI.closeTrayMenu(), 200);
+  });
+  document.getElementById('modeEyeline').addEventListener('click', () => {
+    applyState({ ...state, mode: 'eyeline' });
+    window.brioAPI.traySetMode('eyeline');
+    setTimeout(() => window.brioAPI.closeTrayMenu(), 200);
+  });
+
+  // ── Action items ──────────────────────────────────────────────────────────
+  document.getElementById('itemStart').addEventListener('click',    () => { window.brioAPI.trayOpenRecallSetup(); setTimeout(() => window.brioAPI.closeTrayMenu(), 200); });
+  document.getElementById('itemEnd').addEventListener('click',      () => window.brioAPI.trayEndSession());
+  document.getElementById('itemProjects').addEventListener('click', () => window.brioAPI.trayOpenProjects());
+  document.getElementById('btnTraySettings').addEventListener('click', () => window.brioAPI.trayOpenSettings());
+  document.getElementById('btnTraySettingsSignIn').addEventListener('click', () => window.brioAPI.trayOpenSettings());
+  document.getElementById('itemQuit').addEventListener('click', () => window.brioAPI.trayQuit());
+</script>
+
+</body>
+</html>

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    width: 100vw;
+    height: 100vh;
+    animation: none;
+  }
+
+  #pill {
+    width: 100%;
+    height: 100%;
+    background: var(--card-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 10px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    position: relative;
+    -webkit-app-region: no-drag;
+  }
+
+  #pill.visible { opacity: 1; }
+  #pill.visible { box-shadow: 0 0 0 1px rgba(59,130,246,0.12), 0 4px 16px rgba(0,0,0,0.3); }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.7);
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .dot.low { background: var(--accent-amber); box-shadow: 0 0 6px rgba(245, 158, 11, 0.7); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  #answerText {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.45;
+    font-weight: 400;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  body.large #answerText {
+    font-size: 13px;
+    -webkit-line-clamp: 4;
+  }
+
+  #sizeBtn {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    letter-spacing: 0;
+    flex-shrink: 0;
+    transition: background 0.12s, color 0.12s;
+    -webkit-app-region: no-drag;
+  }
+  #sizeBtn:hover {
+    background: var(--glass-border-strong);
+    color: var(--text-primary);
+    opacity: 1;
+  }
+
+  #thumbGroup { display: none; align-items: center; gap: 3px; flex-shrink: 0; }
+  #thumbGroup.show { display: flex; }
+
+  .e-thumb {
+    background: none;
+    border: 1px solid var(--glass-border);
+    border-radius: 3px;
+    cursor: pointer;
+    width: 18px; height: 16px;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+    transition: background 0.12s;
+  }
+  .e-thumb:hover { background: var(--inset-bg); }
+  .e-thumb.flash-up   { background: rgba(34,197,94,0.3);  border-color: rgba(34,197,94,0.5); }
+  .e-thumb.flash-down { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.4); }
+
+  .e-conf { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: none; }
+  .e-conf.show { display: block; }
+  .e-conf.high   { background: var(--accent-green); }
+  .e-conf.medium { background: var(--accent-amber); }
+  .e-conf.low    { background: var(--accent-red); }
+</style>
+</head>
+<body>
+
+  <div id="pill">
+    <div class="dot" id="dot"></div>
+    <div id="answerText"></div>
+    <div class="e-conf" id="eConfDot"></div>
+    <div id="thumbGroup">
+      <button class="e-thumb" id="thumbUp">👍</button>
+      <button class="e-thumb" id="thumbDown">👎</button>
+    </div>
+    <button id="sizeBtn">L</button>
+  </div>
+
+<script>
+  const pill        = document.getElementById('pill');
+  const answerText  = document.getElementById('answerText');
+  const dotEl       = document.getElementById('dot');
+  const sizeBtn     = document.getElementById('sizeBtn');
+  const thumbGroup   = document.getElementById('thumbGroup');
+  const thumbUpBtn   = document.getElementById('thumbUp');
+  const thumbDownBtn = document.getElementById('thumbDown');
+  const eConfDot     = document.getElementById('eConfDot');
+
+  let showConfidence = false;
+  window.brioAPI.onShowConfidence(val => { showConfidence = val; });
+
+  let currentPayload  = null;
+  let isLarge         = false;
+  let fadeTimer       = null;
+  let behavior        = 'passive';
+  let lastTranscript  = '';
+  let showingAnswer   = false;
+
+  function applyBehavior(b) {
+    behavior = b;
+    if (b === 'always-visible' || b === 'always-transcript') {
+      pill.style.opacity = '0.25';
+      pill.classList.add('visible');
+      if (b === 'always-transcript') {
+        window.brioAPI.eyelineResize('large');
+        isLarge = true;
+        document.body.classList.add('large');
+        sizeBtn.textContent = 'S';
+        if (!showingAnswer) {
+          dotEl.style.display = 'none';
+          answerText.textContent = lastTranscript || '';
+          answerText.style.color = 'var(--text-secondary)';
+          answerText.style.fontStyle = 'italic';
+        }
+      }
+    } else {
+      if (!showingAnswer) {
+        pill.classList.remove('visible');
+        pill.style.opacity = '';
+      }
+    }
+  }
+
+  function showAnswer(payload) {
+    currentPayload = payload;
+    showingAnswer  = true;
+    const { answer, confidence, chunkIds = [] } = payload;
+
+    answerText.style.color = '';
+    answerText.style.fontStyle = '';
+    answerText.textContent = answer;
+    dotEl.style.display = '';
+    dotEl.className = `dot${confidence === 'low' ? ' low' : ''}`;
+
+    if (chunkIds.length) {
+      thumbGroup.classList.add('show');
+      thumbUpBtn.classList.remove('flash-up', 'flash-down');
+      thumbDownBtn.classList.remove('flash-up', 'flash-down');
+    } else {
+      thumbGroup.classList.remove('show');
+    }
+
+    if (showConfidence && !payload.fromWeb) {
+      const c = confidence || 'medium';
+      eConfDot.className = `e-conf show ${c === 'high' ? 'high' : c === 'low' ? 'low' : 'medium'}`;
+    } else {
+      eConfDot.className = 'e-conf';
+    }
+
+    clearTimeout(fadeTimer);
+    pill.style.opacity = '';
+    pill.classList.add('visible');
+    fadeTimer = setTimeout(hidePill, 10000);
+  }
+
+  function hidePill() {
+    showingAnswer = false;
+    clearTimeout(fadeTimer);
+    fadeTimer = null;
+    if (behavior === 'always-visible') {
+      pill.style.opacity = '0.25';
+      dotEl.style.display = 'none';
+      answerText.textContent = '';
+    } else if (behavior === 'always-transcript') {
+      pill.style.opacity = '0.25';
+      dotEl.style.display = 'none';
+      answerText.textContent = lastTranscript || '';
+      answerText.style.color = 'var(--text-secondary)';
+      answerText.style.fontStyle = 'italic';
+    } else {
+      pill.classList.remove('visible');
+      pill.style.opacity = '';
+    }
+  }
+
+  sizeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isLarge = !isLarge;
+    document.body.classList.toggle('large', isLarge);
+    sizeBtn.textContent = isLarge ? 'S' : 'L';
+    window.brioAPI.eyelineResize(isLarge ? 'large' : 'small');
+  });
+
+  [thumbUpBtn, thumbDownBtn].forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const vote = btn === thumbUpBtn ? 'up' : 'down';
+      btn.classList.add(vote === 'up' ? 'flash-up' : 'flash-down');
+      setTimeout(() => btn.classList.remove('flash-up', 'flash-down'), 600);
+      if (currentPayload?.chunkIds?.length) {
+        window.brioAPI.submitFeedback(currentPayload.chunkIds, vote).catch(() => {});
+      }
+    });
+  });
+
+  pill.addEventListener('click', (e) => {
+    if (e.target === sizeBtn || e.target.closest('#thumbGroup')) return;
+    if (!currentPayload) return;
+    window.brioAPI.eyelineExpand(currentPayload);
+    hidePill();
+  });
+
+  document.addEventListener('mousemove', () => { window.brioAPI.setEyelineMouseEvents(false); });
+  document.addEventListener('mouseleave', () => { window.brioAPI.setEyelineMouseEvents(true); });
+
+  let coachingTimer2 = null;
+  window.brioAPI.onCoachingNudge((nudge) => {
+    if (showingAnswer) return;
+    clearTimeout(coachingTimer2);
+    const isGreen = nudge.color === 'green';
+    pill.style.borderColor = isGreen ? 'rgba(34,197,94,0.35)' : 'rgba(251,146,60,0.35)';
+    dotEl.style.display = 'none';
+    answerText.style.color = isGreen ? '#86efac' : '#fdba74';
+    answerText.style.fontStyle = '';
+    answerText.textContent = nudge.message;
+    thumbGroup.classList.remove('show');
+    pill.style.opacity = '';
+    pill.classList.add('visible');
+    coachingTimer2 = setTimeout(() => {
+      pill.style.borderColor = '';
+      answerText.style.color = '';
+      hidePill();
+    }, 7000);
+  });
+
+  window.brioAPI.onEyelineAnswer((payload) => showAnswer(payload));
+  window.brioAPI.onEyelineDismiss(() => hidePill());
+  window.brioAPI.onEyelineBehavior((b) => applyBehavior(b));
+  window.brioAPI.onEyelineTranscript((payload) => {
+    if (payload?.text) {
+      lastTranscript = `${payload.speaker || ''}: ${payload.text}`.trim();
+      if (!showingAnswer && behavior === 'always-transcript') {
+        answerText.textContent = lastTranscript;
+      }
+    }
+  });
+
+  // Theme
+  window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});
+  window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+</script>
+</body>
+</html>

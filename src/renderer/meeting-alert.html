@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px 20px 24px;
+    user-select: none;
+    -webkit-app-region: drag;
+    background: var(--card-bg);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    box-shadow:
+      0 20px 48px rgba(0, 0, 0, 0.35),
+      0 0 0 0.5px rgba(255, 255, 255, 0.05) inset;
+    overflow: hidden;
+    box-sizing: border-box;
+    animation: window-appear 200ms ease-out;
+    position: relative;
+  }
+
+  /* ── Progress bar ─────────────────────────────────────── */
+  .progress-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 15px 15px 0 0;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent-blue);
+    width: 100%;
+  }
+
+  /* ── Close button (wrapper at end of body so it receives clicks) ───────────── */
+  .close-hit-area {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 20;
+    padding: 8px 10px 12px 24px;
+    -webkit-app-region: no-drag;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    pointer-events: auto;
+  }
+  .close-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity 0.12s;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .close-btn:hover { opacity: 1; }
+
+  /* ── Header row ──────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    margin-bottom: 10px;
+    -webkit-app-region: drag;
+  }
+
+  .organizer-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: white;
+    overflow: hidden;
+  }
+
+  .header-info { flex: 1; min-width: 0; padding-right: 8px; }
+
+  .meeting-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .meeting-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* ── Icon actions (right of meeting name, icon only) ──── */
+  .icon-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+  }
+
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.12s, opacity 0.12s;
+    flex-shrink: 0;
+    border-radius: 4px;
+  }
+  .icon-btn:hover { color: var(--text-primary); opacity: 1; }
+  .icon-btn { opacity: 0.7; }
+  .icon-btn.copied { color: var(--accent-green); opacity: 1; }
+  .icon-btn svg { flex-shrink: 0; }
+
+  /* ── Custom tooltip for icon buttons ──────────────────── */
+  #iconTooltip {
+    position: fixed;
+    z-index: 100;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-primary);
+    background: rgba(30, 30, 36, 0.98);
+    border: 1px solid var(--glass-border);
+    border-radius: 5px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  #iconTooltip.visible { opacity: 1; }
+
+  /* ── Bottom row: project select + Join ───────────────── */
+  .bottom-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 5px;
+    -webkit-app-region: no-drag;
+  }
+
+  .assign-select {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 7px;
+    padding: 7px 28px 7px 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%23ffffff44' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    -webkit-app-region: no-drag;
+  }
+  .assign-select:focus { outline: none; border-color: rgba(59,130,246,0.4); }
+  .assign-select.error { border-color: rgba(239,68,68,0.6); }
+  .assign-select option { background: #1a1a24; }
+
+  .btn-send-bot {
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 7px;
+    padding: 7px 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .btn-send-bot:hover { border-color: rgba(255,255,255,0.18); color: var(--text-primary); }
+
+  .btn-join {
+    background: var(--accent-blue);
+    border: none;
+    border-radius: 7px;
+    padding: 7px 18px;
+    color: white;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.12s;
+    flex-shrink: 0;
+  }
+  .btn-join:hover { opacity: 0.85; }
+  .btn-join-arrow {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 2px;
+    vertical-align: -0.08em;
+  }
+  .btn-join-arrow svg {
+    width: 0.95em;
+    height: 0.95em;
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+<div class="header">
+  <div class="organizer-avatar" id="orgAvatar">?</div>
+  <div class="header-info">
+    <div class="meeting-title" id="alertTitle">Untitled Meeting</div>
+    <div class="meeting-time"  id="alertTime"></div>
+  </div>
+  <div class="icon-actions">
+    <button class="icon-btn" id="btnSnooze" title="Snooze" type="button">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="9" r="5.5" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M8 6.5V9l1.5 1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5.5 2.5h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="icon-btn" id="btnCopy" title="Copy call link" type="button">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M6.5 9.5a3.182 3.182 0 0 0 4.5 0l1.5-1.5a3.182 3.182 0 0 0-4.5-4.5L7 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M9.5 6.5a3.182 3.182 0 0 0-4.5 0l-1.5 1.5a3.182 3.182 0 0 0 4.5 4.5L9 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div class="bottom-row">
+  <select class="assign-select" id="assignSelect" title="Assign to project">
+    <option value="">Project…</option>
+  </select>
+  <button class="btn-send-bot" id="btnSendBot">Send Kalara</button>
+  <button class="btn-join" id="btnJoin">Join <span class="btn-join-arrow"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10 L9 3 M9 3 L9 7 M9 3 L5 3"/></svg></span></button>
+</div>
+
+<div class="close-hit-area">
+  <button class="close-btn" id="btnClose" type="button" title="Close">✕</button>
+</div>
+
+<div id="iconTooltip" aria-hidden="true"></div>
+
+<script>
+  let meetingData   = null;
+  let dismissTimer  = null;
+  const DISMISS_MS  = 60000;
+
+  // ── Time format ────────────────────────────────────────────────────────────
+  function formatMeetingTime(isoString) {
+    if (!isoString) return '';
+    const diffMs  = new Date(isoString) - Date.now();
+    const diffSec = Math.round(diffMs / 1000);
+    if (diffSec > 60) {
+      const diffMin = Math.round(diffMs / 60000);
+      if (diffMin < 60) return `In ${diffMin} min`;
+      const h = Math.floor(diffMin / 60), m = diffMin % 60;
+      return m > 0 ? `In ${h}h ${m}m` : `In ${h}h`;
+    }
+    if (diffSec >= 0) return 'Starting now';
+    const agMin = Math.round(-diffMs / 60000);
+    if (agMin < 60) return `Started ${agMin} min ago`;
+    return `Started ${Math.floor(agMin / 60)}h ago`;
+  }
+
+  function updateTime() {
+    if (meetingData?.startIso)
+      document.getElementById('alertTime').textContent = formatMeetingTime(meetingData.startIso);
+  }
+  setInterval(updateTime, 30000);
+
+  // ── Progress bar ──────────────────────────────────────────────────────────
+  function startAutoDismiss() {
+    if (dismissTimer) clearTimeout(dismissTimer);
+    const fill = document.getElementById('progressFill');
+    fill.style.transition = 'none';
+    fill.style.width = '100%';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fill.style.transition = `width ${DISMISS_MS}ms linear`;
+        fill.style.width = '0%';
+      });
+    });
+    dismissTimer = setTimeout(() => {
+      window.brioAPI.meetingAlertAction({ action: 'dismiss' });
+    }, DISMISS_MS);
+  }
+
+  // ── Icon tooltips (custom, since native title often doesn't show in Electron) ─
+  const iconTooltip = document.getElementById('iconTooltip');
+  function showIconTooltip(btn, text) {
+    iconTooltip.textContent = text;
+    iconTooltip.classList.add('visible');
+    const rect = btn.getBoundingClientRect();
+    iconTooltip.style.left = (rect.left + rect.width / 2) + 'px';
+    iconTooltip.style.top = (rect.top - 6) + 'px';
+    iconTooltip.style.transform = 'translate(-100%, -100%)';
+  }
+  function hideIconTooltip() {
+    iconTooltip.classList.remove('visible');
+  }
+  document.getElementById('btnSnooze').addEventListener('mouseenter', (e) => showIconTooltip(e.currentTarget, 'Snooze'));
+  document.getElementById('btnSnooze').addEventListener('mouseleave', hideIconTooltip);
+  document.getElementById('btnCopy').addEventListener('mouseenter', (e) => showIconTooltip(e.currentTarget, 'Copy call link'));
+  document.getElementById('btnCopy').addEventListener('mouseleave', hideIconTooltip);
+
+  // ── Load projects into assign dropdown ────────────────────────────────────
+  window.brioAPI.getProjects().then(projects => {
+    const sel = document.getElementById('assignSelect');
+    for (const p of projects) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    }
+  }).catch(() => {});
+
+  // ── Meeting data ──────────────────────────────────────────────────────────
+  function applyMeeting(m) {
+    meetingData = m;
+    document.getElementById('alertTitle').textContent = m.title || 'Untitled Meeting';
+    updateTime();
+
+    const avatar = document.getElementById('orgAvatar');
+    const org    = m.organizer;
+    const colors = ['#3b82f6','#8b5cf6','#ec4899','#f97316','#10b981','#06b6d4'];
+    if (org?.email) {
+      const hash    = [...org.email].reduce((a, c) => a + c.charCodeAt(0), 0);
+      avatar.style.background = colors[hash % colors.length];
+      avatar.textContent = (org.name?.[0] || org.email[0]).toUpperCase();
+    } else {
+      avatar.style.background = colors[0];
+      avatar.textContent = (m.title?.[0] || '?').toUpperCase();
+    }
+
+    startAutoDismiss();
+  }
+
+  window.brioAPI.onMeetingAlertData(applyMeeting);
+
+  // ── Snooze ────────────────────────────────────────────────────────────────
+  document.getElementById('btnSnooze').addEventListener('click', () => {
+    if (dismissTimer) clearTimeout(dismissTimer);
+    window.brioAPI.meetingAlertAction({ action: 'snooze', meetingData });
+  });
+
+  // ── Copy link ─────────────────────────────────────────────────────────────
+  document.getElementById('btnCopy').addEventListener('click', async () => {
+    if (!meetingData?.meetLink) return;
+    try {
+      await navigator.clipboard.writeText(meetingData.meetLink);
+      const btn = document.getElementById('btnCopy');
+      btn.classList.add('copied');
+      const prevTitle = btn.title;
+      btn.title = 'Copied!';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.title = prevTitle;
+      }, 1500);
+    } catch (e) {}
+  });
+
+  // ── Close ─────────────────────────────────────────────────────────────────
+  document.getElementById('btnClose').addEventListener('click', () => {
+    if (dismissTimer) clearTimeout(dismissTimer);
+    window.brioAPI.meetingAlertAction({ action: 'dismiss' });
+  });
+
+  function requireProject() {
+    const sel = document.getElementById('assignSelect');
+    if (!sel.value) {
+      sel.classList.add('error');
+      setTimeout(() => sel.classList.remove('error'), 1500);
+      return false;
+    }
+    return true;
+  }
+
+  // ── Send Kalara (bot-only, no browser open) ───────────────────────────────
+  document.getElementById('btnSendBot').addEventListener('click', () => {
+    if (!requireProject()) return;
+    if (dismissTimer) clearTimeout(dismissTimer);
+    const projectId = document.getElementById('assignSelect').value || null;
+    window.brioAPI.meetingAlertAction({
+      action: 'send-bot',
+      meetLink: meetingData?.meetLink,
+      projectId,
+      meetingData,
+    });
+  });
+
+  // ── Join ──────────────────────────────────────────────────────────────────
+  document.getElementById('btnJoin').addEventListener('click', () => {
+    if (!requireProject()) return;
+    if (dismissTimer) clearTimeout(dismissTimer);
+    const projectId = document.getElementById('assignSelect').value || null;
+    window.brioAPI.meetingAlertAction({
+      action: 'start',
+      meetLink: meetingData?.meetLink,
+      projectId,
+      meetingData,
+    });
+  });
+
+  // Theme
+  window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});
+  window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+</script>
+</body>
+</html>

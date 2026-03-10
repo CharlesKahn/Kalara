@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  html {
+     /* background: transparent; */
+  }
+
+  body {
+    /* Transparent base so macOS vibrancy shows through; frosted glass via backdrop-filter */
+    background:
+      radial-gradient(ellipse at 20% 0%,   rgba(0, 47, 236, 0.026) 0%, transparent 30%),
+      linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, transparent 90%),
+      rgba(15, 15, 17, 0.98);
+    backdrop-filter: blur(48px) saturate(1.8);
+    -webkit-backdrop-filter: blur(48px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    box-shadow:
+      0 20px 48px rgba(0, 0, 0, 0.35),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
+    color-scheme: dark;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    animation: window-appear 200ms ease-out;
+  }
+
+  /* ── Title bar (drag region) ────────────────────────── */
+  .titlebar {
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    flex-shrink: 0;
+  }
+
+  .titlebar-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .close-btn {
+    -webkit-app-region: no-drag;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .close-btn:hover {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.3);
+    color: var(--accent-red);
+    opacity: 1;
+  }
+
+  /* ── Scrollable content ─────────────────────────────── */
+  .scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .section-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 4px;
+  }
+
+  label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 7px;
+  }
+  .label-with-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .label-info {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    opacity: 0.7;
+  }
+  .label-info:hover {
+    opacity: 1;
+    color: var(--text-primary);
+  }
+  .label-info .label-tooltip {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-primary);
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0s, visibility 0s;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .label-info:hover .label-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transition-duration: 0.05s;
+  }
+
+  select, input, textarea {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  /* Darker field background just for this window (overrides global input base) */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    background: #0b0b10;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.5;
+    padding-right: 14px;
+  }
+  #brief {
+    min-height: 220px;
+    resize: none;
+  }
+  #webContext {
+    min-height: 96px;
+  }
+  select {
+    appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23ffffff44' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+  }
+  select option { background: #000000; }
+
+  /* ── Project browser wrapper (collapsible) ─────────────────────────────────── */
+  .project-browser-wrapper {
+    margin-bottom: 0;
+  }
+  .project-browser-wrapper .project-browser-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    -webkit-app-region: no-drag;
+  }
+  .project-browser-wrapper .project-browser-row:hover {
+    color: var(--text-primary);
+  }
+  .project-browser-wrapper .project-browser-row-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .project-browser-wrapper .project-browser-row-chevron {
+    margin-left: auto;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .project-browser-wrapper.open .project-browser-row-chevron {
+    transform: rotate(180deg);
+  }
+  .project-browser-wrapper .project-browser-body {
+    display: none;
+    padding-top: 4px;
+    border-radius: var(--radius-sm);
+  }
+  .project-browser-wrapper.open .project-browser-body {
+    display: block;
+  }
+  .project-browser-wrapper.error .project-browser-body {
+    outline: 2px solid rgba(239, 68, 68, 0.7);
+    outline-offset: 2px;
+  }
+
+  /* ── Project browser (replaces select) ─────────────────────────────────────── */
+  .project-browser {
+    background: #0b0b10;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .project-browser-wrapper .project-browser {
+    outline: none;
+  }
+  .project-browser-search-wrap {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--glass-border);
+    background: none;
+    border-radius: 0;
+  }
+  .project-browser-search {
+    width: 100%;
+    padding: 6px 0 6px 8px;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    outline: none;
+    box-shadow: none !important;
+  }
+  .project-browser-search:focus {
+    border: none !important;
+    box-shadow: none !important;
+  }
+  .project-browser-search::placeholder {
+    color: var(--text-secondary);
+  }
+  .project-browser-list {
+    max-height: 208px;
+    overflow-y: auto;
+    padding: 8px 10px;
+  }
+  .project-browser-item {
+    display: block;
+    width: 100%;
+    padding: 10px 14px 10px 18px;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s;
+    position: relative;
+  }
+  .project-browser-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+  }
+  .project-browser-item.selected {
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--accent-blue);
+    border-radius: 4px;
+  }
+  .project-browser-item.create-row {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .project-browser-item.create-row:hover {
+    color: var(--text-primary);
+  }
+  .project-browser-empty {
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .project-browser .inline-create {
+    margin: 0;
+    padding: 10px 14px;
+    border-top: 1px solid var(--glass-border);
+    gap: 8px;
+  }
+  .project-browser .inline-create input {
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+
+  /* ── Call-doc drop zone ─────────────────────────────── */
+  .call-drop {
+    border: 1px dashed var(--glass-border-strong);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .call-drop:hover, .call-drop.drag-over {
+    border-color: rgba(59,130,246,0.4);
+    background: rgba(59,130,246,0.04);
+    color: var(--text-primary);
+  }
+  .call-drop .drop-icon { font-size: 16px; flex-shrink: 0; }
+  .call-file-input { display: none; }
+
+  .call-file-list { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+  .call-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    font-size: 11.5px;
+  }
+  .call-file-name   { flex: 1; color: var(--text-primary); opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .call-file-chunks { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-secondary); flex-shrink: 0; }
+
+  /* ── Upcoming meetings ──────────────────────────────── */
+  .upcoming-list { display: flex; flex-direction: column; gap: 5px; }
+  .upcoming-empty { font-size: 12px; color: var(--text-secondary); padding: 8px 0; opacity: 0.6; }
+  .upcoming-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      var(--inset-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .upcoming-row:hover {
+    border-color: rgba(59,130,246,0.4);
+    background: rgba(59,130,246,0.05);
+  }
+  .upcoming-row.selected {
+    border-color: rgba(59,130,246,0.5);
+    background: rgba(59,130,246,0.08);
+  }
+  .upcoming-row.in-progress {
+    border-color: rgba(34, 197, 94, 0.35);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      rgba(34, 197, 94, 0.05);
+  }
+  .upcoming-row.in-progress:hover {
+    border-color: rgba(34, 197, 94, 0.5);
+    background: rgba(34, 197, 94, 0.09);
+  }
+  .upcoming-meet-icon { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.7; }
+  .upcoming-info { flex: 1; min-width: 0; }
+  .upcoming-title { font-size: 12.5px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .upcoming-time-wrap { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+  .upcoming-time { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-secondary); }
+  .upcoming-row.in-progress .upcoming-time { color: var(--accent-green); }
+  .upcoming-select-arrow { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; opacity: 0.5; }
+
+  @keyframes pulse-dot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%       { transform: scale(1.3); opacity: 0.75; }
+  }
+  .live-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    flex-shrink: 0;
+    animation: pulse-dot 2s ease-in-out infinite;
+    display: none;
+  }
+  .upcoming-row.in-progress .live-dot { display: block; }
+
+  .upcoming-row.bot-active {
+    border-color: rgba(168, 85, 247, 0.35);
+    background: rgba(168, 85, 247, 0.07);
+  }
+  .upcoming-row.bot-active:hover { border-color: rgba(168, 85, 247, 0.5); background: rgba(168, 85, 247, 0.11); }
+  .upcoming-row.bot-active .upcoming-time { color: #c084fc; }
+  .upcoming-row.bot-active .live-dot      { display: block; background: #a855f7; }
+
+  /* ── Divider ────────────────────────────────────────── */
+  .divider {
+    height: 1px;
+    background: var(--glass-border);
+  }
+
+  /* ── Buttons ────────────────────────────────────────── */
+  .btn-row {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-primary {
+    background: var(--accent-blue);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 11px 20px;
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    flex: 1;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary-ghost {
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-secondary-ghost:hover { border-color: rgba(255,255,255,0.18); color: var(--text-primary); }
+  .btn-secondary-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-prepare {
+    background: rgba(99,102,241,0.10);
+    border: 1px solid rgba(99,102,241,0.25);
+    border-radius: 6px;
+    color: #a5b4fc;
+    font-size: 12px;
+    padding: 7px 14px;
+    margin-top: 8px;
+    width: auto;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-prepare:hover { opacity: 0.8; }
+  .btn-prepare:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .status {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-height: 18px;
+  }
+  .status.ok  { color: var(--accent-green); }
+  .status.err { color: var(--accent-red); }
+
+  /* ── Inline create project ──────────────────────────── */
+  .inline-create {
+    display: none;
+    margin-top: 8px;
+    gap: 8px;
+  }
+  .inline-create.visible { display: flex; }
+  .inline-create input {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+  .btn-create {
+    background: var(--accent-blue);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 8px 14px;
+    color: white;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  .btn-create:hover { opacity: 0.85; }
+  .btn-create:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-cancel-sm {
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-cancel-sm:hover { opacity: 0.75; }
+
+  /* ── Web Context accordion (same as Brief / Project) ─── */
+  .web-context-accordion {
+    margin-top: 16px;
+  }
+  .web-context-accordion .accordion-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: #0b0b10;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary);
+    transition: border-color 0.15s;
+    -webkit-app-region: no-drag;
+  }
+  .web-context-accordion .accordion-row:hover {
+    border-color: rgba(59,130,246,0.35);
+  }
+  .web-context-accordion.accordion-open .accordion-row {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .web-context-accordion .accordion-row .label-info {
+    flex-shrink: 0;
+  }
+  .web-context-accordion .accordion-row-summary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .web-context-accordion .accordion-row-summary.placeholder {
+    color: var(--text-secondary);
+  }
+  .web-context-accordion .accordion-chevron {
+    margin-left: auto;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .web-context-accordion.accordion-open .accordion-row .accordion-chevron {
+    transform: rotate(180deg);
+  }
+  .web-context-accordion .accordion-body {
+    display: none;
+    padding: 0;
+    border: 1px solid var(--glass-border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    background: #0b0b10;
+  }
+  .web-context-accordion.accordion-open .accordion-body {
+    display: block;
+  }
+  .web-context-accordion .accordion-body textarea {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    border-top: 1px solid var(--glass-border);
+  }
+  .web-context-accordion .accordion-body .accordion-body-inner {
+    padding: 12px 14px 14px;
+  }
+  .web-context-accordion .accordion-body .btn-prepare {
+    margin-top: 8px;
+  }
+
+  /* ── Configure call (simple text accordion) ────────────────────────────────── */
+  .configure-call-accordion {
+    margin-top: 4px;
+  }
+  .configure-call-accordion .accordion-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    -webkit-app-region: no-drag;
+    border: none;
+    background: none;
+    border-radius: 0;
+  }
+  .configure-call-accordion .accordion-row:hover {
+    color: var(--text-primary);
+  }
+  .configure-call-accordion .accordion-row-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .configure-call-accordion .accordion-chevron {
+    margin-left: auto;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .configure-call-accordion.accordion-open .accordion-row .accordion-chevron {
+    transform: rotate(180deg);
+  }
+  .configure-call-accordion .accordion-body {
+    display: none;
+    padding: 12px 0 0;
+    border: none;
+    background: none;
+  }
+  .configure-call-accordion.accordion-open .accordion-body {
+    display: block;
+  }
+  .configure-call-accordion .accordion-body .field-block {
+    margin-bottom: 14px;
+  }
+  .configure-call-accordion .accordion-body .field-block:last-child {
+    margin-bottom: 0;
+  }
+  .configure-call-accordion .accordion-body .field-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  /* Nested Add web context: simple text accordion inside configure call */
+  .configure-call-accordion .web-context-accordion {
+    margin-top: 12px;
+  }
+  .configure-call-accordion .web-context-accordion .accordion-row {
+    padding: 6px 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-size: 12px;
+  }
+  .configure-call-accordion .web-context-accordion .accordion-row:hover {
+    border-color: transparent;
+  }
+  .configure-call-accordion .web-context-accordion .accordion-body {
+    border: none;
+    background: none;
+    padding: 8px 0 0;
+  }
+  .configure-call-accordion .web-context-accordion .accordion-body textarea {
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+  }
+  .configure-call-accordion .web-context-accordion .accordion-body .accordion-body-inner {
+    padding: 0;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Title bar -->
+  <div class="titlebar">
+    <span class="titlebar-label">Start Session</span>
+    <button class="close-btn" id="closeBtn" title="Close">✕</button>
+  </div>
+
+  <div class="scroll-area">
+
+    <!-- Description -->
+    <p class="section-desc">Select a project, configure the call (optional), then join a meeting.</p>
+
+    <div class="project-browser-wrapper open" id="projectBrowserWrapper">
+      <div class="project-browser-row" id="projectBrowserToggle">
+        <span class="project-browser-row-text">Select project</span>
+        <svg class="project-browser-row-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z" fill="currentColor" opacity="0.5"/>
+        </svg>
+      </div>
+      <div class="project-browser-body" id="projectBrowserBody">
+        <div class="project-browser" id="projectBrowser">
+          <div class="project-browser-search-wrap">
+            <input type="text" class="project-browser-search" id="projectSearch" placeholder="Search projects" autocomplete="off" />
+          </div>
+          <div class="project-browser-list" id="projectList"></div>
+          <div class="inline-create" id="inlineCreate">
+            <input type="text" id="newProjectName" placeholder="Project name…" />
+            <button class="btn-create" id="createProjectBtn">Create</button>
+            <button class="btn-cancel-sm" id="cancelCreateBtn">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configure call (simple accordion: Brief, Add web context, Call documents) -->
+    <div id="configureCallSection" class="configure-call-accordion">
+      <div class="accordion-row" id="configureCallToggle">
+        <span class="accordion-row-text">Configure call</span>
+        <span class="label-info" aria-label="Optional: brief, web context, call docs">
+          <svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5.5" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="4.25" r="0.9" fill="currentColor"/><path d="M6 5.8v3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <span class="label-tooltip">Optional: brief, web context, call docs</span>
+        </span>
+        <svg class="accordion-chevron" id="configureCallChevron" width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z" fill="currentColor" opacity="0.5"/>
+        </svg>
+      </div>
+      <div class="accordion-body" id="configureCallBody">
+        <div class="field-block">
+          <textarea id="brief" placeholder="Enter an optional call brief here. Include goals, audience background, positioning, format preferences…"></textarea>
+        </div>
+
+        <!-- Add web context (nested, only when preCall enabled) -->
+        <div id="webContextSection" class="web-context-accordion" style="display:none">
+          <div class="accordion-row" id="webContextToggle">
+            <span class="label-info" aria-label="Optional">
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5.5" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="4.25" r="0.9" fill="currentColor"/><path d="M6 5.8v3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              <span class="label-tooltip">Optional</span>
+            </span>
+            <span class="accordion-row-summary placeholder" id="webContextSummary">Add web context</span>
+          </div>
+          <div class="accordion-body" id="webContextBody">
+            <div class="accordion-body-inner">
+              <textarea id="webContext" placeholder="Research topics, questions to prep for the call…"></textarea>
+              <button class="btn-prepare" id="prepareBtn" disabled>⟳ Prepare Web Context</button>
+              <div class="status" id="prepareStatus"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <div class="field-label">Call documents
+            <span class="label-info" aria-label="Optional, this call only">
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5.5" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="4.25" r="0.9" fill="currentColor"/><path d="M6 5.8v3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              <span class="label-tooltip">Optional, this call only</span>
+            </span>
+          </div>
+          <div class="call-drop" id="callDrop">
+            <span class="drop-icon">📎</span>
+            <span>Drop files or click to add call-specific docs</span>
+            <input class="call-file-input" type="file" id="callFileInput" multiple accept=".pdf,.docx,.txt,.md" />
+          </div>
+          <div class="call-file-list" id="callFileList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming Meetings -->
+    <div id="upcomingSection">
+      <label>Upcoming Meetings</label>
+      <div class="upcoming-list" id="upcomingList">
+        <div class="upcoming-empty" id="upcomingEmpty">Checking calendar…</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Meeting URL -->
+    <div>
+      <label>Or paste a meeting link</label>
+      <input type="url" id="meetingUrl" placeholder="https://meet.google.com/... or zoom.us/j/..." />
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-secondary-ghost" id="sendBotBtn">Send Kalara</button>
+      <button class="btn-primary" id="startBtn">Join Meeting</button>
+    </div>
+    <div class="status" id="status"></div>
+
+  </div>
+
+  <script>
+    const projectBrowserWrapper = document.getElementById('projectBrowserWrapper');
+    const projectBrowserToggle  = document.getElementById('projectBrowserToggle');
+    const projectBrowserBody    = document.getElementById('projectBrowserBody');
+    const projectBrowser       = document.getElementById('projectBrowser');
+    const projectSearch        = document.getElementById('projectSearch');
+    const projectList          = document.getElementById('projectList');
+    const briefInput      = document.getElementById('brief');
+    const prepareBtn      = document.getElementById('prepareBtn');
+    const prepareStatus   = document.getElementById('prepareStatus');
+    const callDrop        = document.getElementById('callDrop');
+    const callFileInput   = document.getElementById('callFileInput');
+    const callFileList    = document.getElementById('callFileList');
+    const startBtn        = document.getElementById('startBtn');
+    const meetingUrlInput = document.getElementById('meetingUrl');
+    const statusEl        = document.getElementById('status');
+    const closeBtn        = document.getElementById('closeBtn');
+    const inlineCreate    = document.getElementById('inlineCreate');
+    const newProjectName  = document.getElementById('newProjectName');
+    const createProjectBtn= document.getElementById('createProjectBtn');
+    const cancelCreateBtn = document.getElementById('cancelCreateBtn');
+
+    let projectsList      = [];
+    let selectedProjectId = null;
+
+    // Close button (frameless window)
+    closeBtn.addEventListener('click', () => window.close());
+
+    // ── Project browser ───────────────────────────────────────────────────────
+    function renderProjectList() {
+      const q = (projectSearch.value || '').trim().toLowerCase();
+      const filtered = q
+        ? projectsList.filter(p => (p.name || '').toLowerCase().includes(q))
+        : projectsList;
+      projectList.innerHTML = '';
+      if (filtered.length === 0 && !q) {
+        const empty = document.createElement('div');
+        empty.className = 'project-browser-empty';
+        empty.textContent = 'No projects yet';
+        projectList.appendChild(empty);
+      } else if (filtered.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'project-browser-empty';
+        empty.textContent = 'No matching projects';
+        projectList.appendChild(empty);
+      } else {
+        filtered.forEach(p => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'project-browser-item' + (selectedProjectId === p.id ? ' selected' : '');
+          btn.textContent = p.name;
+          btn.dataset.id = p.id;
+          btn.addEventListener('click', () => {
+            selectedProjectId = p.id;
+            projectBrowserWrapper.classList.remove('error');
+            projectList.querySelectorAll('.project-browser-item').forEach(el => el.classList.remove('selected'));
+            btn.classList.add('selected');
+            inlineCreate.classList.remove('visible');
+          });
+          projectList.appendChild(btn);
+        });
+      }
+      const createRow = document.createElement('button');
+      createRow.type = 'button';
+      createRow.className = 'project-browser-item create-row';
+      createRow.textContent = '＋ Create new project…';
+      createRow.addEventListener('click', () => {
+        inlineCreate.classList.add('visible');
+        newProjectName.value = '';
+        newProjectName.focus();
+      });
+      projectList.appendChild(createRow);
+    }
+
+    async function initProjects() {
+      try {
+        projectsList = await window.brioAPI.getProjects();
+        renderProjectList();
+      } catch (e) {
+        statusEl.textContent = 'Could not load projects';
+        statusEl.className = 'status err';
+      }
+    }
+
+    projectSearch.addEventListener('input', () => renderProjectList());
+
+    async function doCreateProject() {
+      const name = newProjectName.value.trim();
+      if (!name) return;
+      createProjectBtn.disabled = true;
+      try {
+        const p = await window.brioAPI.createProject(name);
+        projectsList = await window.brioAPI.getProjects();
+        selectedProjectId = p.id;
+        projectBrowserWrapper.classList.remove('error');
+        inlineCreate.classList.remove('visible');
+        renderProjectList();
+      } catch (e) {
+        statusEl.textContent = 'Could not create project: ' + e.message;
+        statusEl.className = 'status err';
+      }
+      createProjectBtn.disabled = false;
+    }
+
+    createProjectBtn.addEventListener('click', doCreateProject);
+    newProjectName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doCreateProject();
+      if (e.key === 'Escape') {
+        inlineCreate.classList.remove('visible');
+      }
+    });
+    cancelCreateBtn.addEventListener('click', () => inlineCreate.classList.remove('visible'));
+
+    // ── Configure call accordion ───────────────────────────────────────────────
+    const configureCallSection = document.getElementById('configureCallSection');
+    const configureCallToggle  = document.getElementById('configureCallToggle');
+    projectBrowserToggle.addEventListener('click', () => {
+      projectBrowserWrapper.classList.toggle('open');
+    });
+    configureCallToggle.addEventListener('click', (e) => {
+      if (e.target.closest('.label-info')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      configureCallSection.classList.toggle('accordion-open');
+      if (configureCallSection.classList.contains('accordion-open')) projectBrowserWrapper.classList.remove('open');
+    });
+
+    // ── Web Context accordion ────────────────────────────────────────────────
+    const webContextSection = document.getElementById('webContextSection');
+    const webContextToggle  = document.getElementById('webContextToggle');
+    const webContextBody    = document.getElementById('webContextBody');
+    const webContextInput   = document.getElementById('webContext');
+    let webContextEnabled   = false;
+
+    webContextToggle.addEventListener('click', (e) => {
+      if (e.target.closest('.label-info')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      webContextSection.classList.toggle('accordion-open');
+      webContextBody.classList.toggle('open', webContextSection.classList.contains('accordion-open'));
+    });
+
+    function updatePrepareBtn() {
+      const hasBrief = briefInput.value.trim().length > 0;
+      const hasWeb   = webContextEnabled && webContextInput && webContextInput.value.trim().length > 0;
+      prepareBtn.disabled = !hasBrief && !hasWeb;
+    }
+
+    briefInput.addEventListener('input', updatePrepareBtn);
+    if (webContextInput) webContextInput.addEventListener('input', updatePrepareBtn);
+
+    prepareBtn.addEventListener('click', async () => {
+      const webCtx = webContextEnabled ? (webContextInput?.value.trim() || '') : '';
+      const brief  = briefInput.value.trim();
+      const query  = webCtx || brief;
+      if (!query) return;
+      prepareBtn.disabled = true;
+      prepareStatus.textContent = 'Researching topics…';
+      prepareStatus.className = 'status';
+      try {
+        const result = await window.brioAPI.prepareCallContext(query);
+        if (result.ok) {
+          prepareStatus.textContent = `Ready — ${result.count} topic${result.count !== 1 ? 's' : ''} cached`;
+          prepareStatus.className = 'status ok';
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
+      } catch (e) {
+        prepareStatus.textContent = e.message.includes('disabled')
+          ? 'Enable Pre-call Research in Settings first'
+          : 'Prepare failed: ' + e.message;
+        prepareStatus.className = 'status err';
+        updatePrepareBtn();
+      }
+    });
+
+    // ── Upcoming meetings ─────────────────────────────────────────────────────
+    const upcomingList  = document.getElementById('upcomingList');
+    const upcomingEmpty = document.getElementById('upcomingEmpty');
+
+    function formatMeetingTime(startIso, endIso) {
+      if (!startIso) return '';
+      const now     = Date.now();
+      const startMs = new Date(startIso).getTime();
+      const endMs   = endIso ? new Date(endIso).getTime() : null;
+      // In-progress
+      if (startMs <= now && endMs && endMs > now) {
+        const minsLeft = Math.ceil((endMs - now) / 60000);
+        if (minsLeft < 60) return `${minsLeft} min left`;
+        const h = Math.floor(minsLeft / 60), mn = minsLeft % 60;
+        return mn > 0 ? `${h}h ${mn}m left` : `${h}h left`;
+      }
+      // Future
+      const diffSec = Math.round((startMs - now) / 1000);
+      if (diffSec > 60) {
+        const diffMin = Math.round((startMs - now) / 60000);
+        if (diffMin < 60) return `In ${diffMin} min`;
+        const h = Math.floor(diffMin / 60), mn = diffMin % 60;
+        return mn > 0 ? `In ${h}h ${mn}m` : `In ${h}h`;
+      }
+      if (diffSec >= 0) return 'Starting now';
+      return '';
+    }
+
+    function isInProgress(m) {
+      if (!m.startIso || !m.endIso) return false;
+      const now = Date.now();
+      return new Date(m.startIso).getTime() <= now && new Date(m.endIso).getTime() > now;
+    }
+
+    let botOnlyMeetingUrl = null;
+    window.brioAPI.getTrayState().then(s => { botOnlyMeetingUrl = s?.botOnlyMeetingUrl || null; }).catch(() => {});
+
+    function renderUpcomingMeetings(meetings) {
+      Array.from(upcomingList.children).forEach(c => { if (c !== upcomingEmpty) c.remove(); });
+      // Filter out ended meetings
+      const now    = Date.now();
+      const active = (meetings || []).filter(m => !m.endIso || new Date(m.endIso).getTime() > now);
+      if (!active.length) {
+        upcomingEmpty.style.display = '';
+        upcomingEmpty.textContent = 'No upcoming meetings in the next hour';
+        return;
+      }
+      upcomingEmpty.style.display = 'none';
+      for (const m of active) {
+        const live      = isInProgress(m);
+        const botActive = !!(botOnlyMeetingUrl && m.meetLink === botOnlyMeetingUrl);
+        const row       = document.createElement('div');
+        row.className   = 'upcoming-row' + (botActive ? ' bot-active' : live ? ' in-progress' : '');
+        if (botActive) row.title = 'Kalara bot is in the meeting';
+        row.innerHTML = `
+          <svg class="upcoming-meet-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 8H9C7.9 8 7 8.9 7 10V14C7 15.1 7.9 16 9 16H15C16.1 16 17 15.1 17 14V10C17 8.9 16.1 8 15 8Z" fill="#00897B"/>
+            <path d="M19 10L17 12L19 14V10Z" fill="#00897B"/>
+          </svg>
+          <div class="upcoming-info">
+            <div class="upcoming-title">${escHtml(m.title)}</div>
+            <div class="upcoming-time-wrap">
+              <span class="live-dot"></span>
+              <span class="upcoming-time" data-startiso="${m.startIso || ''}" data-endiso="${m.endIso || ''}">${formatMeetingTime(m.startIso, m.endIso)}</span>
+            </div>
+          </div>
+          <span class="upcoming-select-arrow">→</span>
+        `;
+        row.addEventListener('click', () => {
+          if (m.meetLink) meetingUrlInput.value = m.meetLink;
+          upcomingList.querySelectorAll('.upcoming-row').forEach(r => r.classList.remove('selected'));
+          row.classList.add('selected');
+          meetingUrlInput.focus();
+        });
+        upcomingList.appendChild(row);
+      }
+    }
+
+    // Every 30s: remove ended meetings, update time displays
+    setInterval(() => {
+      const now = Date.now();
+      Array.from(upcomingList.querySelectorAll('.upcoming-row')).forEach(row => {
+        const timeEl = row.querySelector('.upcoming-time');
+        if (!timeEl) return;
+        const endIso = timeEl.dataset.endiso;
+        if (endIso && new Date(endIso).getTime() <= now) {
+          row.remove();
+        } else {
+          timeEl.textContent = formatMeetingTime(timeEl.dataset.startiso, endIso || null);
+        }
+      });
+      if (!upcomingList.querySelector('.upcoming-row')) {
+        upcomingEmpty.style.display = '';
+        upcomingEmpty.textContent = 'No upcoming meetings in the next hour';
+      }
+    }, 30000);
+
+    window.brioAPI.onUpcomingMeetingsUpdate(renderUpcomingMeetings);
+    window.brioAPI.onPrefillMeetingUrl((url) => {
+      meetingUrlInput.value = url;
+      meetingUrlInput.focus();
+    });
+    window.brioAPI.onPrefillProject((id) => {
+      if (id && projectsList.some(p => p.id === id)) {
+        selectedProjectId = id;
+        projectBrowserWrapper.classList.remove('error');
+        renderProjectList();
+      }
+    });
+    window.brioAPI.getUpcomingMeetings().then(renderUpcomingMeetings).catch(() => {
+      upcomingEmpty.textContent = 'Calendar not connected';
+    });
+
+    // ── Call docs ─────────────────────────────────────────────────────────────
+    window.brioAPI.clearCallDocs().catch(() => {});
+    callDrop.addEventListener('click', () => callFileInput.click());
+    callDrop.addEventListener('dragover', (e) => { e.preventDefault(); callDrop.classList.add('drag-over'); });
+    callDrop.addEventListener('dragleave', () => callDrop.classList.remove('drag-over'));
+    callDrop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      callDrop.classList.remove('drag-over');
+      uploadCallFiles(e.dataTransfer.files);
+    });
+    callFileInput.addEventListener('change', () => { if (callFileInput.files.length) uploadCallFiles(callFileInput.files); });
+
+    async function uploadCallFiles(files) {
+      const formData = new FormData();
+      for (const f of files) formData.append('files', f);
+      try {
+        // Use fetch directly — passing FormData through contextBridge loses File contents
+        const res = await fetch('http://localhost:3847/call/docs/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        for (const r of data.results) {
+          if (r.status === 'ok') addCallFileItem(r.name, r.chunks);
+        }
+      } catch (e) {
+        statusEl.textContent = 'Upload failed: ' + e.message;
+        statusEl.className = 'status err';
+      }
+    }
+
+    function addCallFileItem(name, chunks) {
+      const item = document.createElement('div');
+      item.className = 'call-file-item';
+      item.innerHTML = `
+        <span style="font-size:13px">📄</span>
+        <span class="call-file-name" title="${escHtml(name)}">${escHtml(name)}</span>
+        <span class="call-file-chunks">${chunks} chunks</span>
+      `;
+      callFileList.appendChild(item);
+    }
+
+    // ── Send Kalara (bot-only) ────────────────────────────────────────────────
+    const sendBotBtn = document.getElementById('sendBotBtn');
+    sendBotBtn.addEventListener('click', async () => {
+      const url       = meetingUrlInput.value.trim();
+      const projectId = selectedProjectId;
+      const brief     = briefInput.value.trim() || null;
+
+      if (!url) {
+        statusEl.textContent = 'Please enter a meeting URL';
+        statusEl.className = 'status err';
+        return;
+      }
+      if (!projectId) {
+        statusEl.textContent = 'Please select a project';
+        statusEl.className = 'status err';
+        projectBrowserWrapper.classList.add('error');
+        projectBrowserWrapper.classList.add('open');
+        projectBrowserWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      projectBrowserWrapper.classList.remove('error');
+      sendBotBtn.disabled = true;
+      startBtn.disabled = true;
+      statusEl.textContent = 'Sending Kalara to the meeting...';
+      statusEl.className = 'status';
+
+      try {
+        const result = await fetch('http://localhost:3847/recall/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meeting_url: url, project_id: projectId, brief, bot_only: true }),
+        }).then(r => r.json());
+
+        if (result.bot_id) {
+          window.close();
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
+      } catch (e) {
+        statusEl.textContent = `Error: ${e.message}`;
+        statusEl.className = 'status err';
+        sendBotBtn.disabled = false;
+        startBtn.disabled = false;
+      }
+    });
+
+    // ── Join ──────────────────────────────────────────────────────────────────
+    startBtn.addEventListener('click', async () => {
+      const url       = meetingUrlInput.value.trim();
+      const projectId = selectedProjectId;
+      const brief     = briefInput.value.trim() || null;
+
+      if (!url) {
+        statusEl.textContent = 'Please enter a meeting URL';
+        statusEl.className = 'status err';
+        return;
+      }
+      if (!projectId) {
+        statusEl.textContent = 'Please select a project';
+        statusEl.className = 'status err';
+        projectBrowserWrapper.classList.add('error');
+        projectBrowserWrapper.classList.add('open');
+        projectBrowserWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      projectBrowserWrapper.classList.remove('error');
+      startBtn.disabled = true;
+      statusEl.textContent = 'Loading project docs & starting Recall bot...';
+      statusEl.className = 'status';
+
+      try {
+        const result = await window.brioAPI.startRecall(url, projectId, brief);
+        if (result.bot_id) {
+          window.close();
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
+      } catch (e) {
+        statusEl.textContent = `Error: ${e.message}`;
+        statusEl.className = 'status err';
+        startBtn.disabled = false;
+      }
+    });
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    initProjects();
+
+    // Theme + preCall web context visibility
+    window.brioAPI.getConfig().then(c => {
+      document.documentElement.setAttribute('data-theme', c?.theme || 'dark');
+      if (c?.webSearch?.preCall) {
+        webContextEnabled = true;
+        webContextSection.style.display = 'block';
+      }
+    }).catch(() => {});
+    window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+  </script>
+</body>
+</html>

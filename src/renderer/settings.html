@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  html {
+    background: transparent;
+  }
+
+  body {
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+  }
+
+  .card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(ellipse at 20% 0%,   rgba(59,  90, 220, 0.24) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 100%, rgba(99, 102, 241, 0.18) 0%, transparent 55%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0%, transparent 40%),
+      #131318;
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 16px;
+    box-shadow:
+      0 24px 48px rgba(0, 0, 0, 0.65),
+      0 0 0 0.5px rgba(255, 255, 255, 0.05) inset;
+    overflow: hidden;
+    animation: window-appear 200ms ease-out;
+    color: var(--text-primary);
+  }
+
+  /* ── Title bar ────────────────────────────────────────── */
+  .titlebar {
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+  }
+
+  .titlebar-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .close-btn {
+    -webkit-app-region: no-drag;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+  .close-btn:hover {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.3);
+    color: var(--accent-red);
+    opacity: 1;
+  }
+
+  /* ── Layout ────────────────────────────────────────────── */
+  .shell {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ─── Left sidebar nav ────────────────────────────────── */
+  .sidebar {
+    width: 140px;
+    flex-shrink: 0;
+    background: var(--inset-bg);
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 14px 0 16px;
+    -webkit-app-region: drag;
+  }
+
+  .sidebar-logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    text-transform: uppercase;
+    padding: 0 14px;
+    margin-bottom: 16px;
+  }
+
+  .tab-item {
+    -webkit-app-region: no-drag;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: color 0.12s, background 0.12s;
+    line-height: 1;
+  }
+  .tab-item:hover {
+    color: var(--text-primary);
+    background: var(--glass-border);
+  }
+  .tab-item.active {
+    color: var(--text-primary);
+    border-left-color: var(--accent-blue);
+    background: rgba(59,130,246,0.07);
+  }
+
+  /* ─── Content area ─────────────────────────────────────── */
+  .content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 22px 24px;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .panel-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    margin-bottom: 16px;
+  }
+
+  /* ─── Section dividers ─────────────────────────────────── */
+  .section-divider {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    padding-top: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--glass-border);
+    margin-bottom: 2px;
+  }
+  .section-divider:first-of-type { padding-top: 4px; }
+
+  /* ─── Setting rows ─────────────────────────────────────── */
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--glass-border);
+    gap: 16px;
+  }
+
+  .setting-label { font-size: 13px; color: var(--text-primary); }
+  .setting-sub   { font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.45; }
+
+  /* ─── Toggle rows ──────────────────────────────────────── */
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--glass-border);
+    gap: 16px;
+  }
+
+  .toggle-label { font-size: 13px; color: var(--text-primary); }
+  .toggle-sub   { font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.4; }
+  .toggle-warn  { font-size: 11px; color: rgba(251,146,60,0.7); margin-top: 4px; line-height: 1.4; }
+
+  /* ─── Toggle switch ────────────────────────────────────── */
+  .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--glass-border-strong);
+    border-radius: 10px; cursor: pointer; transition: background 0.18s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--accent-blue); }
+  .toggle-slider::before {
+    content: ''; position: absolute;
+    width: 14px; height: 14px; left: 3px; top: 3px;
+    background: white; border-radius: 50%; transition: transform 0.18s;
+  }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+  /* ─── Hotkey badges ────────────────────────────────────── */
+  .hotkey-display { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .hotkey-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border-strong);
+    border-radius: 6px;
+    padding: 4px 10px;
+    letter-spacing: 0.04em;
+    min-width: 88px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .hotkey-badge.capturing {
+    color: var(--accent-blue);
+    border-color: rgba(59,130,246,0.35);
+    background: rgba(59,130,246,0.08);
+    animation: blink 0.9s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+
+  /* ─── Status messages ──────────────────────────────────── */
+  .status-msg { font-size: 11px; color: var(--text-secondary); min-height: 16px; margin-top: 5px; text-align: right; }
+  .status-msg.ok  { color: var(--accent-green); }
+  .status-msg.err { color: var(--accent-red); opacity: 0.8; }
+
+  /* ─── Buttons ──────────────────────────────────────────── */
+  .btn {
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: opacity 0.12s;
+    white-space: nowrap;
+  }
+  .btn:hover { opacity: 0.8; }
+  .btn-secondary { background: var(--inset-bg);              border-color: var(--glass-border-strong); color: var(--text-secondary); }
+  .btn-primary   { background: rgba(59,130,246,0.15);        border-color: rgba(59,130,246,0.32);      color: var(--accent-blue); }
+  .btn-danger    { background: rgba(239,68,68,0.10);         border-color: rgba(239,68,68,0.22);       color: var(--accent-red); opacity: 0.85; }
+
+  /* ─── Selects ──────────────────────────────────────────── */
+  .styled-select {
+    padding: 5px 10px;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    appearance: none;
+    cursor: pointer;
+    outline: none;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+  }
+  .styled-select:focus { border-color: rgba(59,130,246,0.4); }
+
+  .styled-input {
+    padding: 5px 10px;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 180px;
+  }
+  .styled-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+  .styled-input:focus { border-color: rgba(59,130,246,0.4); }
+
+  /* ─── Pills ────────────────────────────────────────────── */
+  .pill-group { display: flex; gap: 5px; flex-shrink: 0; }
+  .q-pill {
+    font-size: 11.5px;
+    padding: 4px 11px;
+    border-radius: 5px;
+    border: 1px solid var(--glass-border);
+    background: var(--inset-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .q-pill.active {
+    background: rgba(59,130,246,0.15);
+    border-color: rgba(59,130,246,0.32);
+    color: var(--accent-blue);
+  }
+
+  .quality-row { display: none; padding: 8px 0 10px; border-bottom: 1px solid var(--glass-border); gap: 6px; }
+  .quality-row.show { display: flex; }
+
+  /* ─── Badges ────────────────────────────────────────────── */
+  .badge-exp {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px; color: var(--accent-amber);
+    background: rgba(245,158,11,0.10);
+    border: 1px solid rgba(245,158,11,0.22);
+    border-radius: 3px; padding: 1px 5px;
+    letter-spacing: 0.06em; margin-left: 6px;
+    vertical-align: middle;
+  }
+
+  /* ─── Theme toggle ──────────────────────────────────────── */
+  .theme-toggle { display: flex; gap: 3px; }
+  .theme-opt {
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: var(--inset-bg);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .theme-opt.active {
+    background: rgba(59,130,246,0.15);
+    border-color: rgba(59,130,246,0.32);
+    color: var(--accent-blue);
+  }
+
+  /* ─── Account card ──────────────────────────────────────── */
+  .account-card {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      var(--inset-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .account-card-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .account-avatar   { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .account-initials {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(59,130,246,0.12);
+    border: 1px solid rgba(59,130,246,0.22);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Mono', monospace; font-size: 13px; color: var(--accent-blue); flex-shrink: 0;
+  }
+  .account-name  { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+  .account-email { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  .connect-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+
+<!-- ── Title bar ─────────────────────────────────────────── -->
+<div class="titlebar">
+  <span class="titlebar-label">Settings</span>
+  <button class="close-btn" id="closeBtn">✕</button>
+</div>
+
+<div class="shell">
+
+<!-- ── Left sidebar nav ──────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">Kalara</div>
+  <div class="tab-item active" data-tab="general">General</div>
+  <div class="tab-item" data-tab="display">Display</div>
+  <div class="tab-item" data-tab="coaching">Coaching</div>
+  <div class="tab-item" data-tab="intelligence">Intelligence</div>
+  <div class="tab-item" data-tab="account">Account</div>
+</nav>
+
+<!-- ── Content area ──────────────────────────────────────── -->
+<main class="content-area">
+
+  <!-- ── General ─────────────────────────────────────────── -->
+  <div class="tab-panel active" id="panel-general">
+    <div class="panel-title">General</div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Appearance</div>
+        <div class="setting-sub">Switch between dark and light mode.</div>
+      </div>
+      <div class="theme-toggle">
+        <button class="theme-opt active" id="themeDark">Dark</button>
+        <button class="theme-opt" id="themeLight">Light</button>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Query Hotkey</div>
+        <div class="setting-sub">Open spotlight query from anywhere</div>
+      </div>
+      <div class="hotkey-display">
+        <span class="hotkey-badge" id="hotkeyBadge">…</span>
+        <div id="editActions">
+          <button class="btn btn-secondary" id="btnEdit">Change</button>
+        </div>
+      </div>
+    </div>
+    <div id="statusMsg" class="status-msg"></div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Dismiss Hotkey</div>
+        <div class="setting-sub">Instantly dismiss any visible answer card</div>
+      </div>
+      <div class="hotkey-display">
+        <span class="hotkey-badge" id="dismissBadge">…</span>
+        <div id="dismissEditActions">
+          <button class="btn btn-secondary" id="btnDismissEdit">Change</button>
+        </div>
+      </div>
+    </div>
+    <div id="dismissStatusMsg" class="status-msg"></div>
+
+    <div class="section-divider">Calendar</div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Bot name</div>
+        <div class="setting-sub" id="botNameSub">Other participants see …</div>
+      </div>
+      <input class="styled-input" type="text" id="botNameInput" placeholder="" maxlength="60" />
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Auto-join meetings</div>
+        <div class="toggle-sub">Automatically start a session when a calendar meeting is about to begin.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleAutoJoin"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="toggle-row" id="rowAutoJoinDelay" style="display:none; padding-left:18px; opacity:0.85;">
+      <div>
+        <div class="toggle-label" style="font-size:12px;">Join before start</div>
+      </div>
+      <select class="styled-select" id="autoJoinMinutes" style="width:110px;">
+        <option value="1">1 minute</option>
+        <option value="2" selected>2 minutes</option>
+        <option value="5">5 minutes</option>
+        <option value="10">10 minutes</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ── Display ──────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-display">
+    <div class="panel-title">Display</div>
+
+    <div class="section-divider">Answer Cards</div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Auto-dismiss after</div>
+        <div class="setting-sub">How long answers stay visible before hiding.</div>
+      </div>
+      <select class="styled-select" id="dismissTimerSelect" style="width:110px;">
+        <option value="5000">5 sec</option>
+        <option value="8000">8 sec</option>
+        <option value="10000">10 sec</option>
+        <option value="12000" selected>12 sec</option>
+        <option value="15000">15 sec</option>
+        <option value="20000">20 sec</option>
+        <option value="30000">30 sec</option>
+        <option value="-1">Never</option>
+      </select>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Show Confidence</div>
+        <div class="toggle-sub">High / Medium / Low indicator on each answer card.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleConfidence"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="section-divider">Eyeline Mode</div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Behavior when idle</div>
+        <div class="setting-sub">How the eyeline pill appears between answers.</div>
+      </div>
+      <select class="styled-select" id="eyelineBehaviorSelect" style="width:196px;">
+        <option value="passive">Passive (hide when idle)</option>
+        <option value="always-visible">Always Visible</option>
+        <option value="always-transcript">Always Visible + Transcript</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ── Coaching ─────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-coaching">
+    <div class="panel-title">Coaching</div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Coaching Mode</div>
+        <div class="toggle-sub">Live nudges during calls — pace, questions, objections, and more.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleCoaching"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Pitch Mode</div>
+        <div class="toggle-sub">Enable pitch-specific triggers: buying signals, objections, competitors, financials.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="togglePitchMode"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Sensitivity</div>
+        <div class="toggle-sub">How aggressively to trigger coaching nudges.</div>
+      </div>
+      <div class="pill-group" id="sensitivityPills">
+        <button class="q-pill" data-sens="low">Low</button>
+        <button class="q-pill active" data-sens="medium">Medium</button>
+        <button class="q-pill" data-sens="high">High</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Intelligence ─────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-intelligence">
+    <div class="panel-title">Intelligence</div>
+
+    <div class="section-divider">Engagement Score</div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Engagement Score</div>
+        <div class="toggle-sub">Real-time 0–100 meter from response length, questions, sentiment, and talk time.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleEngagement"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Show Sparkline</div>
+        <div class="toggle-sub">Display trend history chart alongside the score in the sidebar.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleEngSparkline" checked><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="section-divider">Web Search</div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Live Search <span class="badge-exp">EXPERIMENTAL</span></div>
+        <div class="toggle-sub">Falls back to web when docs have no answer. Adds 4–8s latency.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleLive"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="quality-row" id="rowQuality">
+      <button class="q-pill active" data-q="bestMatch">Best Match</button>
+      <button class="q-pill" data-q="credibleSources">Credible Sources</button>
+      <button class="q-pill" data-q="researchGrade">Research Grade</button>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Pre-call Research</div>
+        <div class="toggle-sub">Searches key topics from your brief before the call. Use Prepare in Start Session.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="togglePreCall"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Post-call Review</div>
+        <div class="toggle-sub">Searches unanswered questions after the call. Results require your approval.</div>
+        <div class="toggle-warn">⚠ Saved results become part of your project docs permanently.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="togglePostCall"><span class="toggle-slider"></span></label>
+    </div>
+  </div>
+
+  <!-- ── Account ───────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-account">
+    <div class="panel-title">Account</div>
+
+    <div id="googleConnected" style="display:none">
+      <div class="account-card">
+        <div class="account-card-row">
+          <img id="googleAvatar" src="" class="account-avatar" style="display:none;" />
+          <div id="googleInitials" class="account-initials">?</div>
+          <div>
+            <div class="account-name" id="googleName">Connected</div>
+            <div class="account-email" id="googleEmail"></div>
+          </div>
+        </div>
+        <button class="btn btn-danger" id="btnGoogleDisconnect" style="width:100%">Disconnect Google Account</button>
+      </div>
+    </div>
+
+    <div id="googleDisconnected">
+      <div class="connect-row">
+        <div>
+          <div class="setting-label">Google Account</div>
+          <div class="setting-sub" style="margin-top:4px;">Show participant profile photos and recognize returning attendees.</div>
+        </div>
+        <button class="btn btn-primary" id="btnGoogleConnect" style="margin-top:2px;">Connect</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+  // Close button
+  document.getElementById('closeBtn').addEventListener('click', () => window.close());
+
+  // ── Tab switching ─────────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById('panel-' + item.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ── Shared helpers ────────────────────────────────────────────────────────────
+  function formatCombo(combo) {
+    return combo
+      .replace('CommandOrControl', '⌘')
+      .replace('Command', '⌘')
+      .replace('Control', '⌃')
+      .replace('Shift', '⇧')
+      .replace('Alt', '⌥')
+      .replace('Option', '⌥')
+      .replace(/\+/g, ' ');
+  }
+
+  function eventToElectronCombo(e) {
+    const parts = [];
+    if (e.metaKey || e.ctrlKey) parts.push('CommandOrControl');
+    if (e.altKey)   parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    const keyMap = { ' ': 'Space', 'Enter': 'Return', 'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right' };
+    const raw = keyMap[e.key] ?? (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key)) return null;
+    if (parts.length === 0) return null;
+    parts.push(raw);
+    return parts.join('+');
+  }
+
+  // ── Query Hotkey ──────────────────────────────────────────────────────────────
+  const badge       = document.getElementById('hotkeyBadge');
+  const btnEdit     = document.getElementById('btnEdit');
+  const editActions = document.getElementById('editActions');
+  const statusMsg   = document.getElementById('statusMsg');
+
+  let currentCombo = '';
+  let capturing    = false;
+  let pendingCombo = '';
+
+  function renderIdleActions() {
+    editActions.innerHTML = '';
+    btnEdit.style.display = '';
+    editActions.appendChild(btnEdit);
+  }
+
+  function startCapture() {
+    capturing = true; pendingCombo = '';
+    badge.textContent = 'Press keys…';
+    badge.classList.add('capturing');
+    btnEdit.style.display = 'none';
+    editActions.innerHTML = `<button class="btn btn-danger" id="btnCancel">Cancel</button>`;
+    document.getElementById('btnCancel').addEventListener('click', cancelCapture);
+    statusMsg.textContent = ''; statusMsg.className = 'status-msg';
+  }
+
+  function cancelCapture() {
+    capturing = false;
+    badge.textContent = formatCombo(currentCombo);
+    badge.classList.remove('capturing');
+    renderIdleActions();
+  }
+
+  function saveCombo() {
+    if (!pendingCombo) return;
+    window.brioAPI.saveHotkey(pendingCombo);
+    currentCombo = pendingCombo;
+    badge.textContent = formatCombo(currentCombo);
+    renderIdleActions();
+    statusMsg.textContent = 'Saved.';
+    statusMsg.className = 'status-msg ok';
+    setTimeout(() => { statusMsg.textContent = ''; statusMsg.className = 'status-msg'; }, 2500);
+  }
+
+  btnEdit.addEventListener('click', startCapture);
+
+  document.addEventListener('keydown', (e) => {
+    if (!capturing) return;
+    e.preventDefault();
+    if (e.key === 'Escape') { cancelCapture(); return; }
+    const combo = eventToElectronCombo(e);
+    if (!combo) return;
+    pendingCombo = combo;
+    badge.textContent = formatCombo(combo);
+    badge.classList.remove('capturing');
+    editActions.innerHTML = `
+      <button class="btn btn-danger"  id="btnCancel2">Cancel</button>
+      <button class="btn btn-primary" id="btnSave">Save</button>
+    `;
+    capturing = false;
+    document.getElementById('btnCancel2').addEventListener('click', cancelCapture);
+    document.getElementById('btnSave').addEventListener('click', saveCombo);
+  });
+
+  // ── Dismiss Hotkey ────────────────────────────────────────────────────────────
+  const dismissBadge       = document.getElementById('dismissBadge');
+  const btnDismissEdit     = document.getElementById('btnDismissEdit');
+  const dismissEditActions = document.getElementById('dismissEditActions');
+  const dismissStatusMsg   = document.getElementById('dismissStatusMsg');
+
+  let currentDismissCombo = 'Escape';
+  let capturingDismiss    = false;
+  let pendingDismissCombo = '';
+
+  function renderDismissIdle() {
+    dismissEditActions.innerHTML = '';
+    btnDismissEdit.style.display = '';
+    dismissEditActions.appendChild(btnDismissEdit);
+  }
+
+  function startDismissCapture() {
+    capturingDismiss = true; pendingDismissCombo = '';
+    dismissBadge.textContent = 'Press keys…';
+    dismissBadge.classList.add('capturing');
+    btnDismissEdit.style.display = 'none';
+    dismissEditActions.innerHTML = `<button class="btn btn-danger" id="btnDismissCancel">Cancel</button>`;
+    document.getElementById('btnDismissCancel').addEventListener('click', cancelDismissCapture);
+  }
+
+  function cancelDismissCapture() {
+    capturingDismiss = false;
+    dismissBadge.textContent = formatCombo(currentDismissCombo);
+    dismissBadge.classList.remove('capturing');
+    renderDismissIdle();
+  }
+
+  function saveDismissCombo() {
+    if (!pendingDismissCombo) return;
+    window.brioAPI.saveDismissHotkey(pendingDismissCombo);
+    currentDismissCombo = pendingDismissCombo;
+    dismissBadge.textContent = formatCombo(currentDismissCombo);
+    renderDismissIdle();
+    dismissStatusMsg.textContent = 'Saved.';
+    dismissStatusMsg.className = 'status-msg ok';
+    setTimeout(() => { dismissStatusMsg.textContent = ''; dismissStatusMsg.className = 'status-msg'; }, 2500);
+  }
+
+  btnDismissEdit.addEventListener('click', startDismissCapture);
+
+  document.addEventListener('keydown', (e) => {
+    if (!capturingDismiss) return;
+    e.preventDefault();
+    if (e.key === 'Escape') {
+      pendingDismissCombo = 'Escape';
+      dismissBadge.textContent = 'Escape';
+      dismissBadge.classList.remove('capturing');
+      capturingDismiss = false;
+      dismissEditActions.innerHTML = `
+        <button class="btn btn-danger"  id="btnDismissCancel2">Cancel</button>
+        <button class="btn btn-primary" id="btnDismissSave">Save</button>
+      `;
+      document.getElementById('btnDismissCancel2').addEventListener('click', cancelDismissCapture);
+      document.getElementById('btnDismissSave').addEventListener('click', saveDismissCombo);
+      return;
+    }
+    const combo = eventToElectronCombo(e);
+    if (!combo) return;
+    pendingDismissCombo = combo;
+    dismissBadge.textContent = formatCombo(combo);
+    dismissBadge.classList.remove('capturing');
+    capturingDismiss = false;
+    dismissEditActions.innerHTML = `
+      <button class="btn btn-danger"  id="btnDismissCancel2">Cancel</button>
+      <button class="btn btn-primary" id="btnDismissSave">Save</button>
+    `;
+    document.getElementById('btnDismissCancel2').addEventListener('click', cancelDismissCapture);
+    document.getElementById('btnDismissSave').addEventListener('click', saveDismissCombo);
+  }, true);
+
+  // ── Display Config ────────────────────────────────────────────────────────────
+  const dismissTimerSelect = document.getElementById('dismissTimerSelect');
+  dismissTimerSelect.addEventListener('change', () => {
+    window.brioAPI.saveDismissTimer(parseInt(dismissTimerSelect.value));
+  });
+
+  const toggleConfidence = document.getElementById('toggleConfidence');
+  toggleConfidence.addEventListener('change', () => {
+    window.brioAPI.saveDisplayConfig({ showConfidence: toggleConfidence.checked });
+  });
+
+  const eyelineBehaviorSelect = document.getElementById('eyelineBehaviorSelect');
+  eyelineBehaviorSelect.addEventListener('change', () => {
+    window.brioAPI.saveEyelineBehavior(eyelineBehaviorSelect.value);
+  });
+
+  // ── Coaching Config ───────────────────────────────────────────────────────────
+  const toggleCoaching   = document.getElementById('toggleCoaching');
+  const togglePitchMode  = document.getElementById('togglePitchMode');
+  const sensitivityPills = document.querySelectorAll('[data-sens]');
+  let coachSensitivity   = 'medium';
+
+  sensitivityPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      coachSensitivity = pill.dataset.sens;
+      sensitivityPills.forEach(p => p.classList.toggle('active', p === pill));
+      saveCoachingCfg();
+    });
+  });
+
+  function saveCoachingCfg() {
+    window.brioAPI.saveCoachingConfig({ enabled: toggleCoaching.checked, pitchMode: togglePitchMode.checked, sensitivity: coachSensitivity });
+  }
+
+  toggleCoaching.addEventListener('change', saveCoachingCfg);
+  togglePitchMode.addEventListener('change', saveCoachingCfg);
+
+  // ── Engagement Config ─────────────────────────────────────────────────────────
+  const toggleEngagement   = document.getElementById('toggleEngagement');
+  const toggleEngSparkline = document.getElementById('toggleEngSparkline');
+
+  function saveEngagementCfg() {
+    window.brioAPI.saveEngagementConfig({ enabled: toggleEngagement.checked, showSparkline: toggleEngSparkline.checked });
+  }
+
+  toggleEngagement.addEventListener('change', saveEngagementCfg);
+  toggleEngSparkline.addEventListener('change', saveEngagementCfg);
+
+  // ── Web Search Config ─────────────────────────────────────────────────────────
+  const toggleLive     = document.getElementById('toggleLive');
+  const togglePreCall  = document.getElementById('togglePreCall');
+  const togglePostCall = document.getElementById('togglePostCall');
+  const rowQuality     = document.getElementById('rowQuality');
+  const qualityPills   = rowQuality.querySelectorAll('.q-pill');
+  let liveQuality = 'bestMatch';
+
+  qualityPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      liveQuality = pill.dataset.q;
+      qualityPills.forEach(p => p.classList.toggle('active', p === pill));
+      saveWebSearchCfg();
+    });
+  });
+
+  function saveWebSearchCfg() {
+    window.brioAPI.saveWebSearchConfig({ live: toggleLive.checked, liveQuality, preCall: togglePreCall.checked, postCall: togglePostCall.checked });
+  }
+
+  toggleLive.addEventListener('change', () => { rowQuality.classList.toggle('show', toggleLive.checked); saveWebSearchCfg(); });
+  togglePreCall.addEventListener('change', saveWebSearchCfg);
+  togglePostCall.addEventListener('change', saveWebSearchCfg);
+
+  // ── Bot name ──────────────────────────────────────────────────────────────────
+  const botNameInput = document.getElementById('botNameInput');
+  const botNameSub   = document.getElementById('botNameSub');
+  let defaultBotName = 'Notetaker';
+
+  function updateBotNameSub() {
+    const display = botNameInput.value.trim() || defaultBotName;
+    botNameSub.textContent = `Other participants see "${display}"`;
+  }
+
+  function saveBotName() {
+    window.brioAPI.saveBotName(botNameInput.value.trim());
+    updateBotNameSub();
+  }
+  botNameInput.addEventListener('input', updateBotNameSub);
+  botNameInput.addEventListener('blur', saveBotName);
+  botNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') { saveBotName(); botNameInput.blur(); } });
+
+  // ── Auto-join ─────────────────────────────────────────────────────────────────
+  const toggleAutoJoin    = document.getElementById('toggleAutoJoin');
+  const rowAutoJoinDelay  = document.getElementById('rowAutoJoinDelay');
+  const autoJoinMinutes   = document.getElementById('autoJoinMinutes');
+
+  function saveAutoJoinCfg() {
+    window.brioAPI.saveAutoJoinConfig({
+      autoJoinMeetings: toggleAutoJoin.checked,
+      autoJoinMinutesBefore: parseInt(autoJoinMinutes.value),
+    });
+  }
+
+  toggleAutoJoin.addEventListener('change', () => {
+    rowAutoJoinDelay.style.display = toggleAutoJoin.checked ? 'flex' : 'none';
+    saveAutoJoinCfg();
+  });
+  autoJoinMinutes.addEventListener('change', saveAutoJoinCfg);
+
+  // ── Google Auth ───────────────────────────────────────────────────────────────
+  const googleConnected    = document.getElementById('googleConnected');
+  const googleDisconnected = document.getElementById('googleDisconnected');
+  const googleAvatar       = document.getElementById('googleAvatar');
+  const googleInitials     = document.getElementById('googleInitials');
+  const googleName         = document.getElementById('googleName');
+  const googleEmail        = document.getElementById('googleEmail');
+
+  function renderGoogleProfile(profile) {
+    googleConnected.style.display    = '';
+    googleDisconnected.style.display = 'none';
+    googleName.textContent  = profile.name  || 'Google Account';
+    googleEmail.textContent = profile.email || '';
+    if (profile.photo) {
+      googleAvatar.src             = profile.photo;
+      googleAvatar.style.display   = '';
+      googleInitials.style.display = 'none';
+    } else {
+      googleAvatar.style.display   = 'none';
+      googleInitials.style.display = '';
+      const parts = (profile.name || '').trim().split(/\s+/);
+      googleInitials.textContent = parts.length >= 2
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : (parts[0]?.[0] || '?').toUpperCase();
+    }
+  }
+
+  let _profileRefreshing = false;
+  async function applyGoogleProfile(profile) {
+    if (profile?.accessToken) {
+      if (!profile.name && !profile.email && !_profileRefreshing) {
+        _profileRefreshing = true;
+        try {
+          const refreshed = await window.brioAPI.refreshGoogleProfile();
+          if (refreshed) profile = refreshed;
+        } catch (e) {}
+        _profileRefreshing = false;
+      }
+      renderGoogleProfile(profile);
+    } else {
+      googleConnected.style.display    = 'none';
+      googleDisconnected.style.display = '';
+    }
+  }
+
+  document.getElementById('btnGoogleConnect').addEventListener('click', () => window.brioAPI.connectGoogle());
+  document.getElementById('btnGoogleDisconnect').addEventListener('click', () => window.brioAPI.disconnectGoogle());
+  window.brioAPI.onGoogleAuthComplete(applyGoogleProfile);
+  window.brioAPI.getGoogleProfile().then(applyGoogleProfile).catch(() => {});
+
+  // ── Appearance toggle ─────────────────────────────────────────────────────────
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    document.getElementById('themeDark').classList.toggle('active', t === 'dark');
+    document.getElementById('themeLight').classList.toggle('active', t === 'light');
+  }
+
+  ['themeDark', 'themeLight'].forEach(id => {
+    document.getElementById(id).addEventListener('click', () => {
+      const t = id === 'themeDark' ? 'dark' : 'light';
+      applyTheme(t);
+      window.brioAPI.saveTheme(t);
+    });
+  });
+
+  window.brioAPI.onThemeChange(t => applyTheme(t));
+
+  // ── Load all config ───────────────────────────────────────────────────────────
+  window.brioAPI.getConfig().then(config => {
+    // Theme
+    applyTheme(config.theme || 'dark');
+
+    // Hotkeys
+    currentCombo = config.hotkey || 'CommandOrControl+Shift+Space';
+    badge.textContent = formatCombo(currentCombo);
+    currentDismissCombo = config.dismissHotkey || 'Escape';
+    dismissBadge.textContent = formatCombo(currentDismissCombo);
+
+    // Display
+    dismissTimerSelect.value = String(config.dismissMs ?? 12000);
+    const disp = config.display || {};
+    toggleConfidence.checked = !!disp.showConfidence;
+    eyelineBehaviorSelect.value = config.eyelineBehavior || 'passive';
+
+    // Coaching
+    const coach = config.coaching || {};
+    toggleCoaching.checked  = !!coach.enabled;
+    togglePitchMode.checked = !!coach.pitchMode;
+    coachSensitivity = coach.sensitivity || 'medium';
+    sensitivityPills.forEach(p => p.classList.toggle('active', p.dataset.sens === coachSensitivity));
+
+    // Engagement
+    const eng = config.engagement || {};
+    toggleEngagement.checked   = !!eng.enabled;
+    toggleEngSparkline.checked = eng.showSparkline !== false;
+
+    // Web search
+    const ws = config.webSearch || {};
+    toggleLive.checked     = !!ws.live;
+    togglePreCall.checked  = !!ws.preCall;
+    togglePostCall.checked = !!ws.postCall;
+    liveQuality = ws.liveQuality || 'bestMatch';
+    qualityPills.forEach(p => p.classList.toggle('active', p.dataset.q === liveQuality));
+    rowQuality.classList.toggle('show', !!ws.live);
+
+    // Bot name
+    const firstName = (config.googleAuth?.name || '').trim().split(' ')[0];
+    defaultBotName  = firstName ? `${firstName}'s Notetaker` : 'Notetaker';
+    botNameInput.placeholder = defaultBotName;
+    if (config.botName) botNameInput.value = config.botName;
+    updateBotNameSub();
+
+    // Auto-join
+    toggleAutoJoin.checked = !!config.autoJoinMeetings;
+    autoJoinMinutes.value  = String(config.autoJoinMinutesBefore ?? 2);
+    rowAutoJoinDelay.style.display = config.autoJoinMeetings ? 'flex' : 'none';
+  }).catch(() => {
+    currentCombo = 'CommandOrControl+Shift+Space';
+    badge.textContent = formatCombo(currentCombo);
+  });
+</script>
+</div><!-- .card -->
+</body>
+</html>

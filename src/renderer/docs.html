@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    padding: 44px 28px 28px; /* top clears traffic lights */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background:
+      radial-gradient(ellipse at 15% 0%,   rgba(59,  90, 220, 0.30) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 100%, rgba(99, 102, 241, 0.22) 0%, transparent 55%),
+      #0d0d12;
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    animation: appear 200ms ease-out;
+    -webkit-app-region: drag;
+  }
+
+  h2, p, label, select, input, .drop-zone, .file-list, .status-bar {
+    -webkit-app-region: no-drag;
+  }
+
+  h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  p  { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+
+  label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  select {
+    width: 100%;
+    padding: 10px 14px;
+    padding-right: 36px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23ffffff44' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+  }
+  select option { background: #1a1a24; }
+  select:focus { border-color: rgba(59,130,246,0.5); }
+
+  .drop-zone {
+    border: 1.5px dashed var(--glass-border-strong);
+    border-radius: 12px;
+    padding: 36px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, transparent 50%),
+      var(--inset-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .drop-zone.active-target { border-color: rgba(59,130,246,0.4); }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: rgba(59,130,246,0.5);
+    background: rgba(59,130,246,0.04);
+  }
+  .drop-zone.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .drop-icon  { font-size: 32px; margin-bottom: 10px; }
+  .drop-label { font-size: 13px; color: var(--text-secondary); }
+  .drop-sub   { font-size: 11px; color: var(--text-secondary); opacity: 0.6; margin-top: 4px; }
+  .file-input { display: none; }
+
+  .file-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      var(--inset-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+  .file-name   { flex: 1; color: var(--text-primary); opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-chunks { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-secondary); flex-shrink: 0; }
+  .file-status { font-size: 14px; flex-shrink: 0; }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+  .del-btn:hover { color: var(--accent-red); opacity: 1; }
+
+  .status-bar {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+</style>
+</head>
+<body>
+
+  <div>
+    <h2>Foundation Documents</h2>
+    <p>Upload pitch decks, FAQs, one-pagers, and objection handling docs for a project. These apply to every call using this project.</p>
+  </div>
+
+  <div>
+    <label>Project</label>
+    <select id="projectSelect">
+      <option value="">Select a project...</option>
+    </select>
+  </div>
+
+  <div class="drop-zone disabled" id="dropZone">
+    <div class="drop-icon">📄</div>
+    <div class="drop-label">Drop files here or click to upload</div>
+    <div class="drop-sub">PDF, DOCX, TXT, MD supported</div>
+    <input class="file-input" type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" />
+  </div>
+
+  <div class="file-list" id="fileList"></div>
+  <div class="status-bar" id="statusBar">Select a project to manage its documents</div>
+
+  <script>
+    const projectSelect = document.getElementById('projectSelect');
+    const dropZone      = document.getElementById('dropZone');
+    const fileInput     = document.getElementById('fileInput');
+    const fileList      = document.getElementById('fileList');
+    const statusBar     = document.getElementById('statusBar');
+
+    let selectedProjectId = null;
+
+    async function initProjects() {
+      const projects = await window.brioAPI.getProjects();
+      projectSelect.innerHTML = '<option value="">Select a project...</option>';
+      for (const p of projects) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        projectSelect.appendChild(opt);
+      }
+      if (!projects.length) {
+        const opt = document.createElement('option');
+        opt.disabled = true;
+        opt.textContent = '— No projects yet. Create one first. —';
+        projectSelect.appendChild(opt);
+      }
+    }
+
+    projectSelect.addEventListener('change', async () => {
+      selectedProjectId = projectSelect.value || null;
+      if (selectedProjectId) {
+        dropZone.classList.remove('disabled');
+        dropZone.classList.add('active-target');
+        await loadDocs();
+      } else {
+        dropZone.classList.add('disabled');
+        dropZone.classList.remove('active-target');
+        fileList.innerHTML = '';
+        statusBar.textContent = 'Select a project to manage its documents';
+      }
+    });
+
+    async function loadDocs() {
+      if (!selectedProjectId) return;
+      const data = await window.brioAPI.getProjectDocs(selectedProjectId);
+      renderDocs(data.files || []);
+    }
+
+    function renderDocs(files) {
+      fileList.innerHTML = '';
+      if (!files.length) {
+        statusBar.textContent = 'No documents yet — drop files above to upload';
+        return;
+      }
+      for (const f of files) {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.dataset.stored = f.storedName;
+        item.innerHTML = `
+          <span class="file-status">✓</span>
+          <span class="file-name" title="${escHtml(f.originalName)}">${escHtml(f.originalName)}</span>
+          <span class="file-chunks">${f.chunks || ''} chunks</span>
+          <button class="del-btn" title="Remove" data-stored="${escHtml(f.storedName)}">✕</button>
+        `;
+        fileList.appendChild(item);
+      }
+      statusBar.textContent = `${files.length} document${files.length === 1 ? '' : 's'} loaded`;
+      fileList.querySelectorAll('.del-btn').forEach(btn => {
+        btn.addEventListener('click', () => removeDoc(btn.dataset.stored));
+      });
+    }
+
+    async function removeDoc(storedName) {
+      if (!selectedProjectId) return;
+      await window.brioAPI.deleteProjectDoc(selectedProjectId, storedName);
+      await loadDocs();
+    }
+
+    dropZone.addEventListener('click', () => { if (selectedProjectId) fileInput.click(); });
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); if (selectedProjectId) dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      if (selectedProjectId) uploadFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFiles(fileInput.files); });
+
+    async function uploadFiles(files) {
+      if (!selectedProjectId) return;
+      statusBar.textContent = `Uploading ${files.length} file(s)...`;
+      const formData = new FormData();
+      for (const file of files) formData.append('files', file);
+      try {
+        // Use fetch directly — passing FormData through contextBridge loses File contents
+        const r = await fetch(`http://localhost:3847/projects/${selectedProjectId}/docs/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const result = await r.json();
+        const errors = (result.results || []).filter(f => f.status === 'error');
+        await loadDocs();
+        if (errors.length) {
+          statusBar.textContent = `Upload error: ${errors.map(f => f.error || f.name).join(', ')}`;
+        }
+      } catch (e) {
+        statusBar.textContent = 'Upload failed: ' + e.message;
+      }
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    initProjects();
+
+    // Theme
+    window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});
+    window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+  </script>
+</body>
+</html>

@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    animation: none;
+  }
+
+  /* ══════════════════════════════════════════════════════
+     NOTIFICATION PANEL (amber — participant auto-detection)
+  ══════════════════════════════════════════════════════ */
+
+  #notifPanel {
+    display: none;
+    width: 100vw;
+    height: 60px;
+    background:
+      linear-gradient(90deg, rgba(251, 146, 60, 0.10) 0%, transparent 60%),
+      #131318;
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border-bottom: 1px solid rgba(251, 146, 60, 0.2);
+    flex-direction: column;
+    position: relative;
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+  }
+  #notifPanel.show { display: flex; }
+
+  .notif-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 18px;
+    flex: 1;
+    pointer-events: none;
+  }
+
+  .notif-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fb923c;
+    box-shadow: 0 0 8px rgba(251, 146, 60, 0.7);
+    flex-shrink: 0;
+  }
+
+  .notif-text {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .notif-text strong { color: #fb923c; font-weight: 600; }
+  .notif-text .notif-email {
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-family: 'DM Mono', monospace;
+    margin-left: 4px;
+  }
+
+  .notif-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    pointer-events: all;
+  }
+
+  .notif-btn {
+    -webkit-app-region: no-drag;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: opacity 0.12s;
+    white-space: nowrap;
+  }
+  .notif-btn:hover { opacity: 0.8; }
+
+  .btn-keep   { background: rgba(251,146,60,0.14); border-color: rgba(251,146,60,0.3);  color: #fb923c; }
+  .btn-undo   { background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.25);  color: rgba(239,68,68,0.8); }
+  .btn-switch { background: var(--inset-bg);        border-color: var(--glass-border);   color: var(--text-secondary); }
+
+  #notifSelect {
+    display: none;
+    -webkit-app-region: no-drag;
+    background: var(--card-bg);
+    border: 1px solid rgba(251,146,60,0.35);
+    border-radius: 5px;
+    padding: 4px 24px 4px 10px;
+    font-size: 11.5px;
+    color: var(--text-primary);
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%23fb923c' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    min-width: 120px;
+  }
+  #notifSelect option { background: #1a1208; }
+  #notifSelect.show { display: block; }
+
+  .notif-progress-track {
+    height: 3px;
+    width: 100%;
+    background: var(--glass-border);
+    flex-shrink: 0;
+  }
+  #notifProgressBar {
+    height: 100%;
+    width: 0%;
+    background: #fb923c;
+    box-shadow: 0 0 6px rgba(251,146,60,0.5);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     ANSWER BAR
+  ══════════════════════════════════════════════════════ */
+
+  #answerBar {
+    display: none;
+    width: 100vw;
+    height: 68px;
+    background:
+      linear-gradient(90deg, rgba(59, 90, 220, 0.18) 0%, transparent 60%),
+      #131318;
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border-bottom: 1px solid var(--glass-border);
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    -webkit-app-region: drag;
+  }
+  #answerBar.show { display: flex; }
+
+  .signal {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    flex-shrink: 0;
+    box-shadow: 0 0 8px rgba(34,197,94,0.6);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .signal.low { background: var(--accent-amber); box-shadow: 0 0 8px rgba(245,158,11,0.6); }
+  .signal.web { background: #818cf8; box-shadow: 0 0 8px rgba(129,140,248,0.6); }
+
+  .web-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px; font-weight: 500;
+    color: #818cf8;
+    background: rgba(129,140,248,0.10);
+    border: 1px solid rgba(129,140,248,0.25);
+    border-radius: 3px; padding: 2px 6px;
+    letter-spacing: 0.08em; flex-shrink: 0;
+  }
+
+  .source-tag.web-source {
+    color: rgba(129,140,248,0.7);
+    background: rgba(129,140,248,0.08);
+    border-color: rgba(129,140,248,0.15);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  .question-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .divider {
+    width: 1px;
+    height: 28px;
+    background: var(--glass-border);
+    flex-shrink: 0;
+  }
+
+  #answerText {
+    flex: 1;
+    font-size: 13.5px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
+  #answerText .loading {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .sources { display: flex; gap: 6px; flex-shrink: 0; }
+  .source-tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text-secondary);
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dismiss {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .dismiss:hover { background: var(--inset-bg); color: var(--text-primary); }
+
+  .conf-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: none;
+  }
+  .conf-dot.show { display: block; }
+  .conf-dot.high   { background: var(--accent-green); box-shadow: 0 0 5px rgba(34,197,94,0.5); }
+  .conf-dot.medium { background: var(--accent-amber); box-shadow: 0 0 5px rgba(245,158,11,0.5); }
+  .conf-dot.low    { background: var(--accent-red);   box-shadow: 0 0 5px rgba(239,68,68,0.5); }
+
+  .thumb-group { display: none; align-items: center; gap: 4px; flex-shrink: 0; }
+  .thumb-btn {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    width: 26px; height: 26px;
+    border-radius: 5px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 13px;
+    transition: background 0.15s;
+  }
+  .thumb-btn:hover { background: var(--inset-bg); }
+  .thumb-btn.flash-up   { background: rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.5); }
+  .thumb-btn.flash-down { background: rgba(239,68,68,0.2);  border-color: rgba(239,68,68,0.4); }
+</style>
+</head>
+<body>
+
+  <!-- ── Notification panel (amber) ──────────────────────── -->
+  <div id="notifPanel">
+    <div class="notif-body">
+      <div class="notif-dot"></div>
+      <div class="notif-text">
+        Switched to <strong id="notifProject">—</strong>
+        <span class="notif-email" id="notifEmail"></span>
+      </div>
+      <div class="notif-actions">
+        <button class="notif-btn btn-keep"   id="btnKeep">✓ Keep</button>
+        <button class="notif-btn btn-undo"   id="btnUndo">✕ Undo</button>
+        <button class="notif-btn btn-switch" id="btnSwitch">Switch →</button>
+        <select id="notifSelect">
+          <option value="">Pick project…</option>
+        </select>
+      </div>
+    </div>
+    <div class="notif-progress-track">
+      <div id="notifProgressBar"></div>
+    </div>
+  </div>
+
+  <!-- ── Coaching bar ────────────────────────────────────── -->
+  <div id="coachingBar" style="display:none;width:100vw;height:48px;background:linear-gradient(90deg,rgba(251,146,60,0.12) 0%,transparent 60%),#131318;backdrop-filter:blur(32px) saturate(1.6);-webkit-backdrop-filter:blur(32px) saturate(1.6);border-bottom:1px solid rgba(251,146,60,0.25);align-items:center;padding:0 20px;gap:12px;-webkit-app-region:drag;">
+    <div style="width:7px;height:7px;border-radius:50%;background:#fb923c;box-shadow:0 0 8px rgba(251,146,60,0.7);flex-shrink:0;animation:pulse 1.5s ease-in-out infinite;"></div>
+    <div id="coachingText" style="flex:1;font-size:13px;color:var(--text-primary);font-weight:500;"></div>
+    <button id="coachingDismiss" style="-webkit-app-region:no-drag;cursor:pointer;width:26px;height:26px;border-radius:6px;border:1px solid var(--glass-border);background:transparent;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">✕</button>
+  </div>
+
+  <!-- ── Answer bar ──────────────────────────────────────── -->
+  <div id="answerBar">
+    <div class="signal" id="signal"></div>
+    <span class="question-label" id="questionLabel">Detected</span>
+    <span class="web-badge" id="webBadge" style="display:none">WEB</span>
+    <div class="divider"></div>
+    <div id="answerText"><span class="loading">Searching docs…</span></div>
+    <div class="sources" id="sources"></div>
+    <div class="conf-dot" id="confDot" title="Confidence"></div>
+    <div class="thumb-group" id="thumbGroup">
+      <button class="thumb-btn" id="thumbUp">👍</button>
+      <button class="thumb-btn" id="thumbDown">👎</button>
+    </div>
+    <button class="dismiss" id="dismiss">✕</button>
+  </div>
+
+<script>
+  const notifPanel   = document.getElementById('notifPanel');
+  const notifProject = document.getElementById('notifProject');
+  const notifEmail   = document.getElementById('notifEmail');
+  const notifBar     = document.getElementById('notifProgressBar');
+  const notifSelect  = document.getElementById('notifSelect');
+  const btnKeep      = document.getElementById('btnKeep');
+  const btnUndo      = document.getElementById('btnUndo');
+  const btnSwitch    = document.getElementById('btnSwitch');
+
+  const answerBar    = document.getElementById('answerBar');
+  const answerText   = document.getElementById('answerText');
+  const sourcesEl    = document.getElementById('sources');
+  const signalEl     = document.getElementById('signal');
+  const dismissBtn   = document.getElementById('dismiss');
+  const questionLabel = document.getElementById('questionLabel');
+  const webBadge     = document.getElementById('webBadge');
+  const thumbGroup   = document.getElementById('thumbGroup');
+  const thumbUp      = document.getElementById('thumbUp');
+  const thumbDown    = document.getElementById('thumbDown');
+  const confDot      = document.getElementById('confDot');
+
+  let showConfidence = false;
+  window.brioAPI.onShowConfidence(val => { showConfidence = val; });
+
+  const NOTIF_H    = 60;
+  const ANSWER_H   = 68;
+  const COACHING_H = 48;
+  const NOTIF_MS   = 8000;
+
+  let notifVisible  = false;
+  let answerVisible = false;
+  let awarenessMode = false;
+  let coachingVisible = false;
+  let notifTimer    = null;
+  let answerTimer   = null;
+  let coachingTimer = null;
+  let previousProjectId = null;
+  let currentChunkIds = [];
+  let dismissMs = 12000;
+  let timerPaused = false;
+
+  window.brioAPI.onDismissTimerUpdate(ms => { dismissMs = ms; });
+
+  function syncWindowHeight() {
+    let h = 0;
+    if (notifVisible)    h += NOTIF_H;
+    if (coachingVisible) h += COACHING_H;
+    if (answerVisible)   h += ANSWER_H;
+    if (h === 0) {
+      window.brioAPI.hideTopBar();
+    } else {
+      window.brioAPI.resizeTopBar(h);
+    }
+  }
+
+  function showNotif(payload) {
+    notifProject.textContent = payload.projectName;
+    notifEmail.textContent   = `· matched ${payload.email}`;
+    previousProjectId        = payload.previousProjectId;
+
+    window.brioAPI.getProjects().then(projects => {
+      notifSelect.innerHTML = '<option value="">Pick project…</option>';
+      for (const p of projects) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        notifSelect.appendChild(opt);
+      }
+    }).catch(() => {});
+
+    notifSelect.classList.remove('show');
+    notifSelect.style.display = 'none';
+    btnSwitch.style.display   = '';
+
+    notifVisible = true;
+    notifPanel.classList.add('show');
+    syncWindowHeight();
+    startNotifTimer();
+  }
+
+  function dismissNotif() {
+    clearNotifTimer();
+    notifPanel.classList.remove('show');
+    notifVisible = false;
+    syncWindowHeight();
+  }
+
+  function startNotifTimer() {
+    clearNotifTimer();
+    notifBar.style.transition = 'none';
+    notifBar.style.width = '0%';
+    void notifBar.offsetWidth;
+    notifBar.style.transition = `width ${NOTIF_MS}ms linear`;
+    notifBar.style.width = '100%';
+    notifTimer = setTimeout(() => { dismissNotif(); }, NOTIF_MS);
+  }
+
+  function resetNotifTimer() {
+    clearNotifTimer();
+    notifBar.style.transition = 'none';
+    notifBar.style.width = '0%';
+    void notifBar.offsetWidth;
+    startNotifTimer();
+  }
+
+  function clearNotifTimer() {
+    if (notifTimer) { clearTimeout(notifTimer); notifTimer = null; }
+  }
+
+  notifPanel.addEventListener('click', (e) => {
+    if (!e.target.closest('.notif-actions')) resetNotifTimer();
+  });
+
+  btnKeep.addEventListener('click', (e) => { e.stopPropagation(); dismissNotif(); });
+
+  btnUndo.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (previousProjectId) window.brioAPI.activateProject(previousProjectId).catch(() => {});
+    dismissNotif();
+  });
+
+  btnSwitch.addEventListener('click', (e) => {
+    e.stopPropagation();
+    btnSwitch.style.display = 'none';
+    notifSelect.style.display = '';
+    notifSelect.classList.add('show');
+    notifSelect.focus();
+  });
+
+  notifSelect.addEventListener('click', (e) => e.stopPropagation());
+  notifSelect.addEventListener('change', () => {
+    const projectId = notifSelect.value;
+    if (!projectId) return;
+    window.brioAPI.activateProject(projectId).catch(() => {});
+    dismissNotif();
+  });
+
+  function showAnswer(payload) {
+    const { answer, confidence, sources = [], chunkIds = [], awarenessMode: am } = payload;
+    if (am !== undefined) awarenessMode = am;
+    currentChunkIds = chunkIds;
+
+    answerText.innerHTML = '<span class="loading">Searching docs…</span>';
+    sourcesEl.innerHTML  = '';
+    signalEl.className   = 'signal';
+    thumbGroup.style.display = 'none';
+
+    answerVisible = true;
+    answerBar.classList.add('show');
+    syncWindowHeight();
+
+    setTimeout(() => {
+      answerText.textContent = answer;
+
+      if (payload.fromWeb) {
+        signalEl.className = 'signal web';
+        questionLabel.textContent = 'Web';
+        webBadge.style.display = '';
+        sourcesEl.innerHTML = (sources || []).slice(0, 3).map(s => {
+          try {
+            const domain = new URL(s).hostname.replace(/^www\./, '');
+            return `<span class="source-tag web-source" title="${s}">${domain}</span>`;
+          } catch { return `<span class="source-tag web-source">${s}</span>`; }
+        }).join('');
+      } else {
+        signalEl.className = `signal ${confidence === 'low' ? 'low' : ''}`;
+        questionLabel.textContent = 'Detected';
+        webBadge.style.display = 'none';
+        sourcesEl.innerHTML = (sources || []).slice(0, 2)
+          .map(s => `<span class="source-tag">${s.replace(/\.[^.]+$/, '')}</span>`)
+          .join('');
+      }
+
+      if (currentChunkIds.length) {
+        thumbGroup.style.display = 'flex';
+        thumbUp.classList.remove('flash-up', 'flash-down');
+        thumbDown.classList.remove('flash-up', 'flash-down');
+      }
+
+      if (showConfidence && !payload.fromWeb) {
+        const c = confidence || 'medium';
+        confDot.className = `conf-dot show ${c === 'high' ? 'high' : c === 'low' ? 'low' : 'medium'}`;
+        confDot.title = c.charAt(0).toUpperCase() + c.slice(1);
+      } else {
+        confDot.className = 'conf-dot';
+      }
+    }, 400);
+
+    if (!awarenessMode && dismissMs > 0) {
+      clearTimeout(answerTimer);
+      timerPaused = false;
+      answerTimer = setTimeout(() => {
+        answerBar.classList.remove('show');
+        answerVisible = false;
+        syncWindowHeight();
+      }, dismissMs);
+    }
+  }
+
+  answerBar.addEventListener('mouseenter', () => {
+    if (!answerVisible || awarenessMode || dismissMs <= 0) return;
+    clearTimeout(answerTimer);
+    answerTimer = null;
+    timerPaused = true;
+  });
+
+  answerBar.addEventListener('mouseleave', () => {
+    if (!answerVisible || awarenessMode || dismissMs <= 0 || !timerPaused) return;
+    timerPaused = false;
+    answerTimer = setTimeout(() => {
+      answerBar.classList.remove('show');
+      answerVisible = false;
+      syncWindowHeight();
+    }, dismissMs);
+  });
+
+  dismissBtn.addEventListener('click', () => {
+    clearTimeout(answerTimer);
+    answerBar.classList.remove('show');
+    answerVisible = false;
+    syncWindowHeight();
+  });
+
+  // ── Coaching nudge ──────────────────────────────────────────────────────────
+  const coachingBar     = document.getElementById('coachingBar');
+  const coachingText    = document.getElementById('coachingText');
+  const coachingDismiss = document.getElementById('coachingDismiss');
+
+  window.brioAPI.onCoachingNudge((nudge) => {
+    clearTimeout(coachingTimer);
+    coachingText.textContent = nudge.message;
+    const isGreen = nudge.color === 'green';
+    coachingBar.style.borderBottomColor = isGreen
+      ? 'rgba(34,197,94,0.25)'
+      : 'rgba(251,146,60,0.25)';
+    coachingBar.style.display = 'flex';
+    coachingVisible = true;
+    syncWindowHeight();
+    coachingTimer = setTimeout(() => {
+      coachingBar.style.display = 'none';
+      coachingVisible = false;
+      syncWindowHeight();
+    }, 8000);
+  });
+
+  coachingDismiss.addEventListener('click', () => {
+    clearTimeout(coachingTimer);
+    coachingBar.style.display = 'none';
+    coachingVisible = false;
+    syncWindowHeight();
+  });
+
+  // ── Feedback ────────────────────────────────────────────────────────────────
+  thumbUp.addEventListener('click', () => {
+    if (!currentChunkIds.length) return;
+    thumbUp.classList.add('flash-up');
+    setTimeout(() => thumbUp.classList.remove('flash-up'), 600);
+    window.brioAPI.submitFeedback(currentChunkIds, 'up').catch(() => {});
+  });
+
+  thumbDown.addEventListener('click', () => {
+    if (!currentChunkIds.length) return;
+    thumbDown.classList.add('flash-down');
+    setTimeout(() => thumbDown.classList.remove('flash-down'), 600);
+    window.brioAPI.submitFeedback(currentChunkIds, 'down').catch(() => {});
+  });
+
+  // ── IPC listeners ───────────────────────────────────────────────────────────
+  window.brioAPI.onNewAnswer((payload) => showAnswer(payload));
+  window.brioAPI.onParticipantSuggestion((payload) => showNotif(payload));
+  window.brioAPI.onAwarenessMode((value) => { awarenessMode = value; });
+
+  // Theme
+  window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});
+  window.brioAPI.onThemeChange(t => document.documentElement.setAttribute('data-theme', t));
+</script>
+</body>
+</html>
