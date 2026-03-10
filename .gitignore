@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+*.env
+dist/
+out/
+.DS_Store
+docs/config.json
+docs/projects/
+docs/call-history.json

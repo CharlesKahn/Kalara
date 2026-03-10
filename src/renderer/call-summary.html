@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Call Summary</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg, #0f0f17);
+    color: rgba(255,255,255,0.85);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+
+  .page {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-shrink: 0;
+  }
+
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .titlebar-icon { font-size: 18px; }
+
+  .titlebar-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.92);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 360px;
+  }
+
+  .titlebar-meta {
+    font-size: 11px;
+    color: rgba(255,255,255,0.38);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .body::-webkit-scrollbar { width: 4px; }
+  .body::-webkit-scrollbar-track { background: transparent; }
+  .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 6px;
+  }
+
+  .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .pill {
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 11.5px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: rgba(255,255,255,0.65);
+  }
+
+  .project-badge {
+    background: rgba(99,102,241,0.14);
+    border-color: rgba(99,102,241,0.28);
+    color: rgba(200,202,255,0.8);
+  }
+
+  .summary-text {
+    font-size: 13px;
+    line-height: 1.65;
+    color: rgba(255,255,255,0.78);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .summary-text.fallback {
+    color: rgba(255,255,255,0.4);
+    font-style: italic;
+  }
+
+  .error-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: rgba(255,255,255,0.38);
+  }
+
+  .duration-badge {
+    font-size: 11px;
+    color: rgba(255,255,255,0.38);
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <span class="titlebar-icon">📋</span>
+      <div class="titlebar-title" id="titlebarTitle">Call Summary</div>
+    </div>
+    <div class="titlebar-meta" id="titlebarMeta"></div>
+  </div>
+  <div class="body" id="body">
+    <div class="error-state">Loading…</div>
+  </div>
+</div>
+
+<script>
+  function formatDate(iso) {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+    } catch (e) { return iso; }
+  }
+
+  function formatDuration(startIso, endIso) {
+    if (!startIso || !endIso) return '';
+    const ms = new Date(endIso) - new Date(startIso);
+    const totalMin = Math.round(ms / 60000);
+    if (totalMin < 1) return '< 1 min';
+    if (totalMin < 60) return `${totalMin} min`;
+    const h = Math.floor(totalMin / 60), m = totalMin % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+
+  function render(data) {
+    if (data.error) {
+      document.getElementById('body').innerHTML =
+        `<div class="error-state">${data.error}</div>`;
+      return;
+    }
+
+    document.getElementById('titlebarTitle').textContent =
+      data.meetingTitle || 'Call Summary';
+    document.getElementById('titlebarMeta').textContent =
+      formatDate(data.startedAt);
+
+    const isFallback = data.summaryText?.startsWith('Summary generation failed');
+    const duration = formatDuration(data.startedAt, data.endedAt);
+
+    // Build participant display names
+    const participants = (data.participantEmails || []).map(email => {
+      const name = data.participantNamesByEmail?.[email];
+      return name && name !== email.split('@')[0] ? name : email;
+    });
+
+    let html = '';
+
+    // Project + date row
+    if (data.projectName || duration) {
+      html += '<div>';
+      if (data.projectName) {
+        html += `<div class="section-label">Project</div>
+          <div class="pill-row"><span class="pill project-badge">${escHtml(data.projectName)}</span></div>`;
+      }
+      if (duration) {
+        html += `<div class="duration-badge" style="margin-top:${data.projectName ? '10px' : '0'}">Duration: ${duration}</div>`;
+      }
+      html += '</div>';
+    }
+
+    // Participants
+    if (participants.length) {
+      html += `<div>
+        <div class="section-label">Participants</div>
+        <div class="pill-row">${participants.map(p => `<span class="pill">${escHtml(p)}</span>`).join('')}</div>
+      </div>`;
+    }
+
+    // Summary
+    html += `<div>
+      <div class="section-label">Summary</div>
+      <div class="summary-text${isFallback ? ' fallback' : ''}">${escHtml(data.summaryText || '')}</div>
+    </div>`;
+
+    document.getElementById('body').innerHTML = html;
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  window.brioAPI.onCallSummaryData(render);
+
+  window.brioAPI.getConfig()
+    .then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark'))
+    .catch(() => {});
+</script>
+</body>
+</html>

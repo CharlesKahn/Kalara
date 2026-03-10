@@ -89,7 +89,9 @@ contextBridge.exposeInMainWorld('brioAPI', {
   saveWebSearchConfig:(cfg)   => ipcRenderer.send('save-web-search-config', cfg),
   saveTheme:          (theme) => ipcRenderer.send('save-theme', theme),
   onThemeChange:      (cb)    => ipcRenderer.on('theme-change', (_, t) => cb(t)),
-  openSettings:       ()      => ipcRenderer.send('open-settings'),
+  openSettings:             () => ipcRenderer.send('open-settings'),
+  settingsMinimize:         () => ipcRenderer.send('settings-minimize'),
+  settingsToggleFullScreen: () => ipcRenderer.send('settings-fullscreen'),
 
   // ─── Pre-call prepare ──────────────────────────────────────────────────────
   prepareCallContext: (brief) =>
@@ -109,7 +111,10 @@ contextBridge.exposeInMainWorld('brioAPI', {
 
   keepSessionActive: () => ipcRenderer.send('keep-session-active'),
   onAutoEndToast: (cb) => ipcRenderer.on('auto-end-toast', (_, d) => cb(d)),
+  onBotLeftToast: (cb) => ipcRenderer.on('bot-left-toast', (_, d) => cb(d)),
   onSessionList: (cb) => ipcRenderer.on('session-list', (_, list) => cb(list)),
+  openCallSummary: (callId, projectId) => ipcRenderer.send('open-call-summary', { callId, projectId }),
+  onCallSummaryData: (cb) => ipcRenderer.on('call-summary-data', (_, d) => cb(d)),
 
   // ─── Post-search review ────────────────────────────────────────────────────
   getPostSearchResults: () =>
@@ -176,6 +181,9 @@ contextBridge.exposeInMainWorld('brioAPI', {
   onParticipantJoined:  (cb) => ipcRenderer.on('participant-joined', (_, p) => cb(p)),
   onParticipantLeft:    (cb) => ipcRenderer.on('participant-left',   (_, p) => cb(p)),
   onSidebarCollapsedState: (cb) => ipcRenderer.on('sidebar-collapsed-state', (_, v) => cb(v)),
+
+  // ─── Window controls (frameless windows: close / minimize / maximize) ─────
+  windowControl:       (action) => ipcRenderer.send('window-control', action),
 
   // ─── Tray menu ────────────────────────────────────────────────────────────
   getTrayState:        ()       => ipcRenderer.invoke('get-tray-state'),

@@ -22,17 +22,16 @@
     display: flex;
     flex-direction: column;
     background:
-      radial-gradient(ellipse at 20% 0%,   rgba(59,  90, 220, 0.24) 0%, transparent 55%),
-      radial-gradient(ellipse at 80% 100%, rgba(99, 102, 241, 0.18) 0%, transparent 55%),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0%, transparent 40%),
-      #131318;
-    backdrop-filter: blur(32px) saturate(1.6);
-    -webkit-backdrop-filter: blur(32px) saturate(1.6);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 16px;
+      radial-gradient(ellipse at 20% 0%,   rgba(0, 47, 236, 0.12) 0%, transparent 30%),
+      linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, transparent 90%),
+      rgba(19, 19, 24, 0.98);
+    backdrop-filter: blur(48px) saturate(1.8);
+    -webkit-backdrop-filter: blur(48px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
     box-shadow:
-      0 24px 48px rgba(0, 0, 0, 0.65),
-      0 0 0 0.5px rgba(255, 255, 255, 0.05) inset;
+      0 20px 48px rgba(0, 0, 0, 0.35),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
     overflow: hidden;
     animation: window-appear 200ms ease-out;
     color: var(--text-primary);
@@ -57,28 +56,44 @@
     color: var(--text-secondary);
   }
 
-  .close-btn {
+  /* Title bar: same stop-light style as Projects window */
+  .window-controls {
     -webkit-app-region: no-drag;
-    width: 22px;
-    height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .win-btn {
+    box-sizing: border-box;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
     border-radius: 50%;
+    aspect-ratio: 1;
     background: var(--inset-bg);
     border: 1px solid var(--glass-border);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 11px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.15s;
     flex-shrink: 0;
-    opacity: 0.5;
+    filter: grayscale(1);
   }
-  .close-btn:hover {
+  .win-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+  }
+  .win-btn.close-btn:hover {
     background: rgba(239,68,68,0.15);
     border-color: rgba(239,68,68,0.3);
     color: var(--accent-red);
-    opacity: 1;
+    filter: none;
   }
 
   /* ── Layout ────────────────────────────────────────────── */
@@ -378,7 +393,11 @@
 <!-- ── Title bar ─────────────────────────────────────────── -->
 <div class="titlebar">
   <span class="titlebar-label">Settings</span>
-  <button class="close-btn" id="closeBtn">✕</button>
+  <div class="window-controls">
+    <button class="win-btn" id="fullscreenBtn" title="Maximize">□</button>
+    <button class="win-btn" id="minimizeBtn" title="Minimize">−</button>
+    <button class="win-btn close-btn" id="closeBtn" title="Close">✕</button>
+  </div>
 </div>
 
 <div class="shell">
@@ -640,6 +659,8 @@
 <script>
   // Close button
   document.getElementById('closeBtn').addEventListener('click', () => window.close());
+  document.getElementById('minimizeBtn').addEventListener('click', () => window.brioAPI.windowControl('minimize'));
+  document.getElementById('fullscreenBtn').addEventListener('click', () => window.brioAPI.windowControl('maximize'));
 
   // ── Tab switching ─────────────────────────────────────────────────────────────
   document.querySelectorAll('.tab-item').forEach(item => {

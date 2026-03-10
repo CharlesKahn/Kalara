@@ -183,19 +183,25 @@ let primaryBotId = null;
 function createSession(botId, opts) {
   sessions.set(botId, {
     botId,
-    meetingUrl: opts.meetingUrl,
-    projectId:  opts.projectId || null,
-    brief:      opts.brief || null,
-    botOnly:    opts.botOnly || false,
+    meetingUrl:    opts.meetingUrl,
+    meetingTitle:  opts.meetingTitle || null,
+    calendarEventId: opts.calendarEventId || null,
+    projectId:     opts.projectId || null,
+    brief:         opts.brief || null,
+    botOnly:       opts.botOnly || false,
     docChunks:       [],
     callDocChunks:   [],
     callAnswerLog:   [],
     zeroConfidenceLog: [],
     transcriptBuffer: [],
+    fullTranscriptBuffer: [],
+    speakerMap:           {},
+    participantNamesByEmail: {},
     currentCallRecord: null,
     suggestionMadeThisCall: false,
     previousProjectId: null,
     callHistoryContext: '',
+    historyContextLoaded: false,
   });
 }
 
@@ -253,51 +259,165 @@ function chunkText(text, source, chunkSize = 500, overlap = 50) {
   return chunks;
 }
 
-// ─── Call summaries (answer history) ──────────────────────────────────────────
-function callSummariesDir(projectId) {
-  return path.join(PROJECTS_DIR, projectId, 'call-summaries');
+// ─── Call history ─────────────────────────────────────────────────────────────
+
+function callHistoryDir(projectId) {
+  return path.join(PROJECTS_DIR, projectId || 'unassigned', 'call-history');
 }
 
-function saveCallSummary(projectId, callId, participantEmails, startedAt, answers) {
-  if (!projectId || !callId) return;
-  const dir = callSummariesDir(projectId);
-  fs.mkdirSync(dir, { recursive: true });
-  const summary = {
-    callId, projectId, participantEmails, startedAt,
-    endedAt: new Date().toISOString(),
-    answers: answers.filter(a => a.answer),
-  };
+function saveCallHistoryTranscript(snapshot) {
+  const { callId, projectId, calendarEventId, meetingTitle, startedAt, endedAt,
+          participantEmails, participantNamesByEmail, fullTranscriptBuffer } = snapshot;
+  const dir = callHistoryDir(projectId);
   try {
-    fs.writeFileSync(path.join(dir, `${callId}.json`), JSON.stringify(summary, null, 2));
-  } catch (e) { console.error('[history] Save failed:', e.message); }
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${callId}.json`), JSON.stringify({
+      callId, projectId: projectId || null, calendarEventId: calendarEventId || null,
+      meetingTitle: meetingTitle || null, startedAt, endedAt,
+      participantEmails: participantEmails || [],
+      participantNamesByEmail: participantNamesByEmail || {},
+      transcript: fullTranscriptBuffer || [],
+    }, null, 2));
+    console.log(`[history] Transcript saved: ${callId}.json`);
+  } catch (e) {
+    console.error('[history] Transcript save failed:', e.message);
+  }
 }
 
-function buildHistoryContext(projectId, email) {
-  const dir = callSummariesDir(projectId);
-  if (!fs.existsSync(dir)) return '';
-  const lc = email.toLowerCase();
-  const allAnswers = [];
-  try {
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
-    for (const file of files) {
-      try {
-        const s = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
-        if (!s.participantEmails?.some(e => e.toLowerCase() === lc)) continue;
-        for (const ans of (s.answers || [])) {
-          if (ans.question && ans.answer) allAnswers.push({ ...ans, callDate: s.startedAt });
-        }
-      } catch (e) {}
+async function generateCallSummary(fullTranscriptBuffer) {
+  const transcriptText = fullTranscriptBuffer.map(u => `${u.speaker}: ${u.text}`).join('\n');
+  if (!transcriptText) return null;
+  const prompt = `Summarize this call in 3-5 sentences covering: main topics discussed, key decisions made, action items, and any commitments or agreements. Be specific and factual.\n\nTRANSCRIPT:\n${transcriptText}`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      return msg.content[0]?.text || null;
+    } catch (e) {
+      console.warn(`[summary] Attempt ${attempt} failed: ${e.message}`);
+      if (attempt === 2) return null;
     }
+  }
+}
+
+function saveCallSummaryJson(snapshot, summaryText) {
+  const { callId, projectId, calendarEventId, meetingTitle, startedAt, endedAt,
+          participantEmails, participantNamesByEmail } = snapshot;
+  const dir = callHistoryDir(projectId);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const proj = (loadProjects().projects || []).find(p => p.id === projectId);
+    fs.writeFileSync(path.join(dir, `${callId}-summary.json`), JSON.stringify({
+      callId, projectId: projectId || null, projectName: proj?.name || null,
+      calendarEventId: calendarEventId || null, meetingTitle: meetingTitle || null,
+      startedAt, endedAt,
+      participantEmails: participantEmails || [],
+      participantNamesByEmail: participantNamesByEmail || {},
+      summaryText: summaryText ?? 'Summary generation failed -- full transcript available.',
+      generatedAt: new Date().toISOString(),
+    }, null, 2));
+    console.log(`[summary] Summary saved: ${callId}-summary.json`);
+  } catch (e) {
+    console.error('[summary] Summary save failed:', e.message);
+  }
+}
+
+function updateCallHistoryIndex(projectId, callId, entry) {
+  const dir = callHistoryDir(projectId);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {
+    console.error('[history] Index dir create failed:', e.message); return;
+  }
+  const indexPath = path.join(dir, 'call-history-index.json');
+  let index = { calls: [] };
+  if (fs.existsSync(indexPath)) {
+    try { index = JSON.parse(fs.readFileSync(indexPath, 'utf-8')); } catch (e) {}
+  }
+  const idx = index.calls.findIndex(c => c.callId === callId);
+  if (idx >= 0) index.calls[idx] = entry;
+  else index.calls.unshift(entry);
+  // Atomic write — prevents corruption from concurrent multi-session writes
+  const tmpPath = indexPath + '.tmp';
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(index, null, 2));
+    fs.renameSync(tmpPath, indexPath);
+  } catch (e) {
+    console.error('[history] Index write failed:', e.message);
+    try { fs.unlinkSync(tmpPath); } catch (_) {}
+  }
+}
+
+async function loadCrossProjectContext(participantEmails) {
+  if (!participantEmails.length) return '';
+  const lc = participantEmails.map(e => e.toLowerCase());
+  let projectDirs = [];
+  try {
+    projectDirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory()).map(d => d.name);
   } catch (e) { return ''; }
-  if (!allAnswers.length) return '';
-  allAnswers.sort((a, b) => {
-    const s = (x) => x.feedback === 'up' ? 2 : x.feedback === 'down' ? 0 : 1;
-    if (s(b) !== s(a)) return s(b) - s(a);
-    return new Date(b.callDate) - new Date(a.callDate);
-  });
-  return allAnswers.slice(0, 4)
-    .map(a => `Q: ${a.question.slice(0, 120)}\nA: ${a.answer.slice(0, 180)}`)
-    .join('\n\n');
+
+  const allProjects = loadProjects().projects || [];
+  // Per-participant collection: email → matching summary entries
+  const byParticipant = {};
+  lc.forEach(e => { byParticipant[e] = []; });
+
+  for (const projDir of projectDirs) {
+    const indexPath = path.join(PROJECTS_DIR, projDir, 'call-history', 'call-history-index.json');
+    if (!fs.existsSync(indexPath)) continue;
+    let index;
+    try { index = JSON.parse(fs.readFileSync(indexPath, 'utf-8')); } catch (e) { continue; }
+
+    const proj = allProjects.find(p => p.id === projDir);
+    const projectName = proj?.name || projDir;
+
+    for (const entry of (index.calls || [])) {
+      const entryEmails = (entry.participantEmails || []).map(e => e.toLowerCase());
+      const matchingParticipants = lc.filter(e => entryEmails.includes(e));
+      if (!matchingParticipants.length) continue;
+
+      const summaryPath = path.join(PROJECTS_DIR, projDir, 'call-history', `${entry.callId}-summary.json`);
+      if (!fs.existsSync(summaryPath)) continue;
+
+      let summaryText;
+      try {
+        const s = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+        summaryText = s.summaryText;
+      } catch (e) { continue; }
+
+      const summaryEntry = { callId: entry.callId, date: entry.date, projectName,
+        participants: entry.participantNames || entry.participantEmails || [], summaryText };
+      for (const email of matchingParticipants) {
+        byParticipant[email].push(summaryEntry);
+      }
+    }
+  }
+
+  // Per participant: 3 most recent; deduplicate across participants by callId
+  const seenCallIds = new Set();
+  const finalEntries = [];
+  for (const email of lc) {
+    const sorted = (byParticipant[email] || []).sort((a, b) => new Date(b.date) - new Date(a.date));
+    for (const entry of sorted.slice(0, 3)) {
+      if (seenCallIds.has(entry.callId)) continue;
+      seenCallIds.add(entry.callId);
+      finalEntries.push(entry);
+    }
+  }
+  if (!finalEntries.length) return '';
+
+  // TODO: Monitor token cost of history context injection in production.
+  // Currently uncapped across participants -- consider capping at N summaries or X tokens
+  // once real usage data exists. Each summary is ~500-1000 tokens; at scale this
+  // could meaningfully increase per-query input costs.
+  return finalEntries.map(e => {
+    const date = e.date
+      ? new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'Unknown date';
+    const names = Array.isArray(e.participants) ? e.participants.join(', ') : (e.participants || 'unknown participants');
+    return `PAST CALL CONTEXT: From ${e.projectName} / ${date} with ${names}:\n${e.summaryText}`;
+  }).join('\n\n');
 }
 
 // ─── Chunk weights ─────────────────────────────────────────────────────────────
@@ -455,8 +575,22 @@ async function ragQuery(question, session) {
     .map(u => `${u.speaker}: ${u.text}`)
     .join('\n');
 
+  // Lazy cross-project context loading: run once per session, re-run when new participants join
+  if (session && !session.historyContextLoaded) {
+    const emails = session.currentCallRecord?.participantEmails || [];
+    if (emails.length > 0) {
+      try {
+        session.callHistoryContext = await loadCrossProjectContext(emails);
+        if (session.callHistoryContext) console.log('[history] Cross-project context loaded');
+      } catch (e) {
+        console.error('[history] Context load error:', e.message);
+      }
+    }
+    session.historyContextLoaded = true;
+  }
+
   const historySection = session?.callHistoryContext
-    ? `\n\nPARTICIPANT HISTORY (lowest priority — historical reference only):\n${session.callHistoryContext}`
+    ? `\n\n${session.callHistoryContext}`
     : '';
 
   const systemPrompt = [
@@ -467,7 +601,7 @@ async function ragQuery(question, session) {
       ? `\nCALL BRIEF — HIGHEST PRIORITY:\n${session.brief}\n\nThe Call Brief above contains explicit instructions for this call. They take highest priority and override anything in the background documents if there is any conflict. Follow the Brief's tone, format, and positioning instructions exactly. Use the documents only to source factual information, but frame and present that information according to the Brief.`
       : '',
     session?.callHistoryContext
-      ? 'This participant has been on previous calls. Treat prior history as lowest-priority context only — the Brief and call documents take precedence.'
+      ? 'If a question or topic was discussed in a past call listed in PAST CALL CONTEXT, reference it explicitly in your answer with the date and participants. Example: As discussed on Dec 7 with Rick and Amy, we agreed that... Treat past call context as lowest priority — the Brief and call documents take precedence.'
       : '',
   ].filter(Boolean).join('\n');
 
@@ -736,6 +870,14 @@ app.post('/recall/webhook', async (req, res) => {
   if (isParticipantJoin) {
     const participant = data?.data?.participant || data?.participant || {};
     const { id, name, email } = participant;
+    // Build speakerMap: prefer real name, fall back to email local-part
+    if (id) {
+      if (name && !/^Speaker\s+\d+$/i.test(name)) {
+        session.speakerMap[id] = name;
+      } else if (email) {
+        session.speakerMap[id] = email.split('@')[0];
+      }
+    }
     if (id || name || email) {
       webhookCallback?.('participant-joined', {
         id:      id || email || name || 'unknown',
@@ -746,16 +888,13 @@ app.post('/recall/webhook', async (req, res) => {
     }
     if (email && session.currentCallRecord) {
       const lc = email.toLowerCase();
+      const displayName = name && !/^Speaker\s+\d+$/i.test(name) ? name : (email.split('@')[0]);
       if (!session.currentCallRecord.participantEmails.includes(lc)) {
         session.currentCallRecord.participantEmails.push(lc);
         upsertCallRecord(session.currentCallRecord);
-      }
-      if (!session.callHistoryContext && session.projectId) {
-        const hist = buildHistoryContext(session.projectId, lc);
-        if (hist) {
-          session.callHistoryContext = hist;
-          console.log(`[history] Loaded context for ${lc}`);
-        }
+        // Map email to display name; invalidate context cache so next RAG query re-loads
+        session.participantNamesByEmail[lc] = displayName;
+        session.historyContextLoaded = false;
       }
 
       if (!session.suggestionMadeThisCall) {
@@ -785,14 +924,21 @@ app.post('/recall/webhook', async (req, res) => {
     || event === 'transcript.partial_update' || event === 'transcript.word';
   if (isTranscript) {
     const inner = data?.data || data;
+    const participantId = inner?.participant?.id;
+    const rawLabel = inner?.participant?.name || inner?.speaker || '';
+    const genericMatch = rawLabel.match(/^Speaker\s+(\d+)$/i);
+    const resolvedName = (participantId && session.speakerMap[participantId])
+      || (rawLabel && !genericMatch ? rawLabel : null)
+      || (genericMatch ? `Unknown Speaker ${genericMatch[1]}` : 'Unknown');
     const utterance = {
-      speaker: inner?.participant?.name || inner?.speaker || 'Unknown',
+      speaker: resolvedName,
       text: (inner?.words || []).map(w => w.text).join(' ') || inner?.text || '',
       ts: Date.now(),
     };
     if (utterance.text.trim().length > 0) {
       session.transcriptBuffer.push(utterance);
       if (session.transcriptBuffer.length > BUFFER_SIZE) session.transcriptBuffer.shift();
+      session.fullTranscriptBuffer.push(utterance);
       webhookCallback?.('transcript', utterance);
       coaching.onTranscriptEvent({ ...utterance, ts: Date.now() });
       engagement.onTranscriptEvent({ ...utterance, ts: Date.now() });
@@ -837,9 +983,21 @@ app.post('/recall/webhook', async (req, res) => {
 });
 
 app.post('/recall/start', async (req, res) => {
-  const { meeting_url, project_id, brief, bot_only } = req.body;
+  const { meeting_url, project_id, brief, bot_only, meeting_title, organizer_email, calendar_event_id } = req.body;
   if (!meeting_url) return res.status(400).json({ error: 'meeting_url required' });
   if (sessions.size >= 3) return res.status(429).json({ error: 'Max 3 concurrent sessions' });
+
+  // Resolve project: explicit > organizer email heuristic > null (mid-call auto-detect)
+  let resolvedProjectId = project_id || null;
+  if (!resolvedProjectId && organizer_email) {
+    const suggestion = suggestProject(organizer_email);
+    if (suggestion) {
+      resolvedProjectId = suggestion.projectId;
+      console.log(`[auto-join] Organizer ${organizer_email} → project "${suggestion.projectName}"`);
+    } else {
+      console.log(`[auto-join] Organizer ${organizer_email} → no project match (mid-call detection will run)`);
+    }
+  }
 
   // Start coaching/engagement sessions
   coaching.startCoachingSession((nudge) => {
@@ -848,7 +1006,7 @@ app.post('/recall/start', async (req, res) => {
   engagement.startEngagementSession((scoreData) => {
     webhookCallback?.('engagement-score', scoreData);
   });
-  loadCompetitorNames(project_id);
+  loadCompetitorNames(resolvedProjectId);
 
   try {
     const recallBase = process.env.RECALL_REGION
@@ -881,31 +1039,39 @@ app.post('/recall/start', async (req, res) => {
       return res.status(502).json({ error: `Recall API: ${errMsg}` });
     }
 
+    // Generate a unique call ID for this session
+    const callId = crypto.randomUUID();
+
     // Create session
     createSession(bot.id, {
-      meetingUrl: meeting_url,
-      projectId:  project_id || null,
-      brief:      brief?.trim() || null,
-      botOnly:    !!bot_only,
+      meetingUrl:      meeting_url,
+      meetingTitle:    meeting_title?.trim() || null,
+      calendarEventId: calendar_event_id?.trim() || null,
+      projectId:       resolvedProjectId,
+      brief:           brief?.trim() || null,
+      botOnly:         !!bot_only,
     });
     primaryBotId = bot.id;
 
     // Load project docs into session
-    if (project_id) await loadSessionDocs(bot.id, project_id);
+    if (resolvedProjectId) await loadSessionDocs(bot.id, resolvedProjectId);
 
-    // Create call record
+    // Create call record using the generated callId
     const session = sessions.get(bot.id);
-    const proj = loadProjects().projects.find(p => p.id === project_id);
+    const proj = loadProjects().projects.find(p => p.id === resolvedProjectId);
     session.currentCallRecord = {
-      id: `call_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-      projectId: project_id || null,
+      id: callId,
+      projectId: resolvedProjectId,
       projectName: proj?.name || null,
       participantEmails: [],
       startedAt: new Date().toISOString(),
     };
     upsertCallRecord(session.currentCallRecord);
 
-    webhookCallback?.('session-started', { botId: bot.id, meetingUrl: meeting_url, botOnly: !!bot_only, projectId: project_id });
+    webhookCallback?.('session-started', {
+      botId: bot.id, meetingUrl: meeting_url, meetingTitle: meeting_title?.trim() || null,
+      botOnly: !!bot_only, projectId: resolvedProjectId, callId,
+    });
     res.json({ bot_id: bot.id, status: bot.status_changes?.[0]?.code });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -935,16 +1101,19 @@ app.post('/recall/end', async (req, res) => {
 
   const pendingLog = [...session.zeroConfidenceLog];
 
-  // Save call summary before clearing state
-  if (session.currentCallRecord && session.projectId && session.callAnswerLog.length > 0) {
-    saveCallSummary(
-      session.projectId,
-      session.currentCallRecord.id,
-      session.currentCallRecord.participantEmails || [],
-      session.currentCallRecord.startedAt,
-      [...session.callAnswerLog]
-    );
-  }
+  // Snapshot all data before clearing session state
+  const endedAt = new Date().toISOString();
+  const snapshot = {
+    callId:      session.currentCallRecord?.id,
+    projectId:   session.projectId,
+    calendarEventId: session.calendarEventId,
+    meetingTitle: session.meetingTitle,
+    startedAt:   session.currentCallRecord?.startedAt,
+    endedAt,
+    participantEmails:       [...(session.currentCallRecord?.participantEmails || [])],
+    participantNamesByEmail: { ...session.participantNamesByEmail },
+    fullTranscriptBuffer:    [...session.fullTranscriptBuffer],
+  };
 
   coaching.endCoachingSession();
   engagement.endEngagementSession();
@@ -952,6 +1121,37 @@ app.post('/recall/end', async (req, res) => {
   webhookCallback?.('session-ended', { botId });
 
   res.json({ ok: true, postSearchPending: webSearchCfg.postCall && pendingLog.length > 0 });
+
+  // Post-call save: transcript JSON + AI summary + index update (background, after response)
+  if (snapshot.callId) {
+    (async () => {
+      // 1. Always save full transcript JSON
+      saveCallHistoryTranscript(snapshot);
+
+      // 2. AI summary only if transcript has >= 10 utterances
+      if (snapshot.fullTranscriptBuffer.length >= 10) {
+        const summaryText = await generateCallSummary(snapshot.fullTranscriptBuffer);
+        saveCallSummaryJson(snapshot, summaryText);
+        const participantNames = Object.values(snapshot.participantNamesByEmail);
+        updateCallHistoryIndex(snapshot.projectId, snapshot.callId, {
+          callId: snapshot.callId, date: snapshot.startedAt,
+          meetingTitle: snapshot.meetingTitle || null,
+          participantEmails: snapshot.participantEmails, participantNames,
+          summaryExcerpt: summaryText ? summaryText.slice(0, 200) : null,
+        });
+      } else {
+        console.log(`[summary] Skipped — transcript has ${snapshot.fullTranscriptBuffer.length} utterances (min 10)`);
+        // Still index the call for participant tracking (no summaryExcerpt)
+        updateCallHistoryIndex(snapshot.projectId, snapshot.callId, {
+          callId: snapshot.callId, date: snapshot.startedAt,
+          meetingTitle: snapshot.meetingTitle || null,
+          participantEmails: snapshot.participantEmails,
+          participantNames: Object.values(snapshot.participantNamesByEmail),
+          summaryExcerpt: null,
+        });
+      }
+    })().catch(e => console.error('[history] Post-call save error:', e.message));
+  }
 
   // Part 3: run post-call search in background
   if (webSearchCfg.postCall && pendingLog.length > 0) {
@@ -1017,6 +1217,23 @@ app.post('/postsearch/save', async (req, res) => {
 
   postSearchResults = postSearchResults.filter(r => r.id !== resultId);
   res.json({ ok: true });
+});
+
+// ─── Routes: Summary status (for bot-left toast polling) ──────────────────────
+
+app.get('/session/summary-status/:callId', (req, res) => {
+  const { callId } = req.params;
+  let projectId = null;
+  try {
+    const dirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory()).map(d => d.name);
+    for (const dir of dirs) {
+      if (fs.existsSync(path.join(PROJECTS_DIR, dir, 'call-history', `${callId}-summary.json`))) {
+        projectId = dir; break;
+      }
+    }
+  } catch (e) {}
+  res.json({ ready: !!projectId, projectId });
 });
 
 // ─── Routes: Feedback ─────────────────────────────────────────────────────────
@@ -1158,6 +1375,16 @@ function startWebhookServer(port, callback, onOAuthComplete) {
   setInterval(() => { coaching.tick(); engagement.tick(); }, 5000);
   app.listen(port, () => {
     console.log(`[server] Kalara server running on port ${port}`);
+    // Verify Haiku model availability for narrative summaries
+    anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      messages: [{ role: 'user', content: 'ping' }],
+    }).then(() => {
+      console.log('[summary] Haiku model available — narrative summaries enabled');
+    }).catch(e => {
+      console.warn('[summary] Haiku model unavailable -- narrative summaries will use fallback text:', e.message);
+    });
   });
 }
 

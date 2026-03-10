@@ -43,6 +43,7 @@ const alertedMeetingIds  = new Set();
 const autoJoinedEventIds = new Set();
 let autoJoinToastWindow  = null;
 let autoEndToastWindow   = null;
+let botLeftToastWindow   = null;
 
 // Multi-session state: Map<botId, { meetingUrl, botOnly, projectId }>
 const activeSessions = new Map();
@@ -202,15 +203,37 @@ function openAutoJoinToast(meeting) {
   });
 }
 
+function openBotLeftToast(data) {
+  if (botLeftToastWindow && !botLeftToastWindow.isDestroyed()) botLeftToastWindow.close();
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  botLeftToastWindow = new BrowserWindow({
+    width: 340, height: 100,
+    x: sw - 356, y: sh - 116,
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, hasShadow: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+  });
+  botLeftToastWindow.loadFile(path.join(__dirname, '../renderer/bot-left-toast.html'));
+  botLeftToastWindow.on('closed', () => { botLeftToastWindow = null; });
+  botLeftToastWindow.webContents.once('did-finish-load', () => {
+    botLeftToastWindow?.webContents.send('bot-left-toast', data);
+  });
+}
+
 async function autoJoinMeeting(meeting) {
   autoJoinedEventIds.add(meeting.id);
   openAutoJoinToast(meeting);
   try {
-    const config = loadConfig();
     const res = await fetch('http://localhost:3847/recall/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ meeting_url: meeting.meetLink, project_id: config.lastProjectId || null, brief: '' }),
+      body: JSON.stringify({
+        meeting_url:       meeting.meetLink,
+        meeting_title:     meeting.title || '',
+        organizer_email:   meeting.organizer?.email || '',
+        calendar_event_id: meeting.id || '',
+        brief: '',
+      }),
     });
     const result = await res.json();
     if (result.error) {
@@ -617,6 +640,15 @@ function createTray() {
 
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 
+// Frameless window controls (projects, etc.): close / minimize / maximize
+ipcMain.on('window-control', (event, action) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  if (action === 'close') win.close();
+  else if (action === 'minimize') win.minimize();
+  else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
+});
+
 ipcMain.on('hide-topbar', () => topBarWindow?.hide());
 
 ipcMain.on('resize-topbar', (event, height) => {
@@ -806,7 +838,15 @@ ipcMain.on('meeting-alert-action', (event, { action, meetLink, projectId, meetin
     fetch('http://localhost:3847/recall/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ meeting_url: meetLink, project_id: projectId || null, brief: '', bot_only: true }),
+      body: JSON.stringify({
+        meeting_url:       meetLink,
+        meeting_title:     meetingData?.title || '',
+        organizer_email:   meetingData?.organizer?.email || '',
+        calendar_event_id: meetingData?.id || '',
+        project_id:        projectId || null,
+        brief:             '',
+        bot_only:          true,
+      }),
     }).catch(() => {});
   }
 });
@@ -894,6 +934,11 @@ ipcMain.on('save-theme', (event, theme) => {
 
 // Open settings (from sidebar gear icon or tray menu)
 ipcMain.on('open-settings', () => openSettings());
+ipcMain.on('settings-minimize', () => settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.minimize());
+ipcMain.on('settings-fullscreen', () => {
+  if (!settingsWindow || settingsWindow.isDestroyed()) return;
+  settingsWindow.setFullScreen(!settingsWindow.isFullScreen());
+});
 
 // ─── Tray menu IPC ────────────────────────────────────────────────────────────
 ipcMain.handle('get-tray-state', () => trayMenuState());
@@ -964,7 +1009,6 @@ function openProjects() {
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
-    titleBarStyle: 'hiddenInset',
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
   win.loadFile(path.join(__dirname, '../renderer/projects.html'));
@@ -1083,6 +1127,30 @@ function openPostSearchReview() {
   postSearchWindow.on('closed', () => { postSearchWindow = null; });
 }
 
+function openCallSummary(callId, projectId) {
+  const DOCS_BASE = path.join(__dirname, '../../docs');
+  const summaryPath = path.join(DOCS_BASE, 'projects', projectId, 'call-history', `${callId}-summary.json`);
+  let summaryData;
+  try {
+    summaryData = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+  } catch (e) {
+    summaryData = { error: 'Could not load summary.' };
+  }
+  const win = new BrowserWindow({
+    width: 560, height: 640,
+    title: 'Call Summary',
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+  });
+  win.loadFile(path.join(__dirname, '../renderer/call-summary.html'));
+  win.webContents.once('did-finish-load', () => {
+    win.webContents.send('call-summary-data', summaryData);
+  });
+}
+
+ipcMain.on('open-call-summary', (event, { callId, projectId }) => {
+  if (callId && projectId) openCallSummary(callId, projectId);
+});
+
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createTopBar();
@@ -1185,8 +1253,10 @@ app.whenReady().then(() => {
       }
     }
     if (event === 'bot-left-call') {
-      // Bot confirmed call ended — end session immediately
+      // Bot confirmed call ended — show toast, then end session
       autoEndToastWindow?.close(); autoEndToastWindow = null;
+      const sess = activeSessions.get(payload.botId);
+      if (sess) openBotLeftToast({ title: sess.meetingTitle, callId: sess.callId, projectId: sess.projectId, botOnly: sess.botOnly });
       fetch('http://localhost:3847/recall/end', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1202,9 +1272,11 @@ app.whenReady().then(() => {
     }
     if (event === 'session-started') {
       activeSessions.set(payload.botId, {
-        meetingUrl: payload.meetingUrl || null,
-        botOnly:    payload.botOnly || false,
-        projectId:  payload.projectId || null,
+        meetingUrl:   payload.meetingUrl || null,
+        meetingTitle: payload.meetingTitle || null,
+        botOnly:      payload.botOnly || false,
+        projectId:    payload.projectId || null,
+        callId:       payload.callId || null,
       });
       if (!payload.botOnly && payload.meetingUrl) shell.openExternal(payload.meetingUrl).catch(() => {});
       if (payload.projectId) {

@@ -4,20 +4,90 @@
 <meta charset="UTF-8">
 <link rel="stylesheet" href="styles.css">
 <style>
+  html { background: transparent; }
   body {
-    padding: 44px 28px 28px;
+    margin: 0;
+    padding: 0;
+    background:
+      radial-gradient(ellipse at 20% 0%,   rgba(0, 47, 236, 0.026) 0%, transparent 30%),
+      linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, transparent 90%),
+      rgba(15, 15, 17, 0.98);
+    backdrop-filter: blur(48px) saturate(1.8);
+    -webkit-backdrop-filter: blur(48px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    box-shadow:
+      0 20px 48px rgba(0, 0, 0, 0.35),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
+    color-scheme: dark;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    animation: appear 200ms ease-out;
+  }
+
+  /* ── Title bar (grayscale round window controls) ────────────────────────── */
+  .titlebar {
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    flex-shrink: 0;
+  }
+  .titlebar-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .window-controls {
+    -webkit-app-region: no-drag;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .win-btn {
+    box-sizing: border-box;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    border-radius: 50%;
+    aspect-ratio: 1;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    filter: grayscale(1);
+  }
+  .win-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+  }
+  .win-btn.close-btn:hover {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.3);
+    color: var(--accent-red);
+    filter: none;
+  }
+
+  /* ── Scrollable content ──────────────────────────────────────────────────── */
+  .scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 28px 28px;
     display: flex;
     flex-direction: column;
     gap: 24px;
-    background:
-      radial-gradient(ellipse at 15% 0%,   rgba(59,  90, 220, 0.30) 0%, transparent 55%),
-      radial-gradient(ellipse at 85% 100%, rgba(99, 102, 241, 0.22) 0%, transparent 55%),
-      #0d0d12;
-    backdrop-filter: blur(24px) saturate(1.5);
-    -webkit-backdrop-filter: blur(24px) saturate(1.5);
-    animation: appear 200ms ease-out;
-    -webkit-app-region: drag;
-    overflow-y: auto;
   }
 
   h2, p, label, input, button, .row, .project-list, .status { -webkit-app-region: no-drag; }
@@ -248,6 +318,16 @@
 </head>
 <body>
 
+  <div class="titlebar">
+    <span class="titlebar-label">Projects</span>
+    <div class="window-controls">
+      <button class="win-btn" id="winMaximize" title="Maximize">□</button>
+      <button class="win-btn" id="winMinimize" title="Minimize">−</button>
+      <button class="win-btn close-btn" id="winClose" title="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="scroll-area">
   <div>
     <h2>Projects</h2>
     <p style="margin-top:6px">Create named projects, each with their own document set. Click a project to manage its documents.</p>
@@ -268,12 +348,18 @@
       <div class="empty">No projects yet</div>
     </div>
   </div>
+  </div>
 
   <script>
     const nameInput = document.getElementById('nameInput');
     const createBtn = document.getElementById('createBtn');
     const statusEl  = document.getElementById('status');
     const listEl    = document.getElementById('projectList');
+
+    // Window controls (grayscale round buttons)
+    document.getElementById('winClose').addEventListener('click', () => window.close());
+    document.getElementById('winMinimize').addEventListener('click', () => window.brioAPI.windowControl('minimize'));
+    document.getElementById('winMaximize').addEventListener('click', () => window.brioAPI.windowControl('maximize'));
 
     let openItem = null;
 
