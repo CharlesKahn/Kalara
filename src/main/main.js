@@ -38,13 +38,14 @@ let meetingAlertWindow = null;
 let docPreviewWindow   = null;
 let docPreviewFilePath = null;
 let calendarPollTimer  = null;
-let sessionActive      = false;
 let cachedMeetings     = [];
 const alertedMeetingIds  = new Set();
 const autoJoinedEventIds = new Set();
 let autoJoinToastWindow  = null;
-let activeMeetingUrl     = null;
-let botOnlySession       = false;
+let autoEndToastWindow   = null;
+
+// Multi-session state: Map<botId, { meetingUrl, botOnly, projectId }>
+const activeSessions = new Map();
 
 // ─── Google OAuth helpers ─────────────────────────────────────────────────────
 function buildGoogleAuthUrl() {
@@ -221,7 +222,6 @@ async function autoJoinMeeting(meeting) {
 }
 
 async function calendarPollTick() {
-  if (sessionActive) return;
   console.log(`[calendar] Poll tick — signedIn:${hasValidGoogleToken()} time:${new Date().toISOString()}`);
   const meetings = await fetchUpcomingMeetings(60);
   cachedMeetings = meetings;
@@ -547,8 +547,9 @@ function trayMenuState() {
   return {
     mode: awarenessMode ? 'awareness' : eyelineMode ? 'eyeline' : 'passive',
     coaching: coachingMode,
-    sessionActive,
-    botOnlyMeetingUrl: (botOnlySession && sessionActive) ? activeMeetingUrl : null,
+    sessionActive: activeSessions.size > 0,
+    sessions: [...activeSessions.entries()].map(([botId, s]) => ({ botId, ...s })),
+    botOnlyMeetingUrl: [...activeSessions.values()].find(s => s.botOnly)?.meetingUrl || null,
   };
 }
 
@@ -901,7 +902,23 @@ ipcMain.on('tray-toggle-coaching',  ()         => toggleCoaching());
 ipcMain.on('tray-open-projects',    ()         => { closeTrayMenuWindow(); openProjects(); });
 // tray-open-doc-manager removed — doc management is now inline in Manage Projects window
 ipcMain.on('tray-open-recall-setup',()         => { closeTrayMenuWindow(); openRecallSetup(); });
-ipcMain.on('tray-end-session',      ()         => fetch('http://localhost:3847/recall/end', { method: 'POST' }).catch(() => {}));
+ipcMain.on('tray-end-session', (_, botId) => {
+  if (botId) {
+    fetch('http://localhost:3847/recall/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bot_id: botId }),
+    }).catch(() => {});
+  } else if (activeSessions.size > 1) {
+    openEndSessionPicker();
+  } else {
+    fetch('http://localhost:3847/recall/end', { method: 'POST' }).catch(() => {});
+  }
+});
+ipcMain.on('keep-session-active', () => {
+  autoEndToastWindow?.close();
+  autoEndToastWindow = null;
+});
 ipcMain.on('tray-open-settings',    ()         => { closeTrayMenuWindow(); openSettings(); });
 ipcMain.on('tray-quit',             ()         => app.quit());
 ipcMain.on('close-tray-menu',       ()         => closeTrayMenuWindow());
@@ -1019,6 +1036,39 @@ function openSettings() {
   settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
+function openAutoEndToast(botId) {
+  if (autoEndToastWindow && !autoEndToastWindow.isDestroyed()) return;
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  autoEndToastWindow = new BrowserWindow({
+    width: 340, height: 72,
+    x: width - 356, y: height - 88,
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, hasShadow: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+  });
+  autoEndToastWindow.loadFile(path.join(__dirname, '../renderer/auto-end-toast.html'));
+  autoEndToastWindow.on('closed', () => { autoEndToastWindow = null; });
+  autoEndToastWindow.webContents.once('did-finish-load', () => {
+    autoEndToastWindow?.webContents.send('auto-end-toast', { botId });
+  });
+}
+
+function openEndSessionPicker() {
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  const win = new BrowserWindow({
+    width: 360, height: 220,
+    x: Math.round((sw - 360) / 2), y: Math.round(sh * 0.3),
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, hasShadow: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+  });
+  win.loadFile(path.join(__dirname, '../renderer/end-session-picker.html'));
+  win.webContents.once('did-finish-load', () => {
+    const sessionList = [...activeSessions.entries()].map(([botId, s]) => ({ botId, ...s }));
+    win.webContents.send('session-list', sessionList);
+  });
+}
+
 function openPostSearchReview() {
   if (postSearchWindow && !postSearchWindow.isDestroyed()) {
     postSearchWindow.focus();
@@ -1134,11 +1184,28 @@ app.whenReady().then(() => {
         topBarWindow?.show();
       }
     }
+    if (event === 'bot-left-call') {
+      // Bot confirmed call ended — end session immediately
+      autoEndToastWindow?.close(); autoEndToastWindow = null;
+      fetch('http://localhost:3847/recall/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_id: payload.botId || undefined }),
+      }).catch(() => {});
+    }
+    if (event === 'user-left-call') {
+      // User left their call — show countdown toast (unless bot-only session)
+      const session = activeSessions.get(payload.botId);
+      if (session && !session.botOnly) {
+        openAutoEndToast(payload.botId);
+      }
+    }
     if (event === 'session-started') {
-      sessionActive    = true;
-      activeMeetingUrl = payload.meetingUrl || null;
-      botOnlySession   = payload.botOnly || false;
-      stopCalendarPolling();
+      activeSessions.set(payload.botId, {
+        meetingUrl: payload.meetingUrl || null,
+        botOnly:    payload.botOnly || false,
+        projectId:  payload.projectId || null,
+      });
       if (!payload.botOnly && payload.meetingUrl) shell.openExternal(payload.meetingUrl).catch(() => {});
       if (payload.projectId) {
         const cfg = loadConfig(); cfg.lastProjectId = payload.projectId; saveConfig(cfg);
@@ -1146,10 +1213,8 @@ app.whenReady().then(() => {
       updateTrayMenu();
     }
     if (event === 'session-ended') {
-      sessionActive    = false;
-      activeMeetingUrl = null;
-      botOnlySession   = false;
-      if (hasValidGoogleToken()) startCalendarPolling();
+      activeSessions.delete(payload.botId);
+      if (activeSessions.size === 0 && hasValidGoogleToken()) startCalendarPolling();
       updateTrayMenu();
     }
     if (event === 'engagement-score') {

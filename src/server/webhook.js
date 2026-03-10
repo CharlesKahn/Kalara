@@ -168,28 +168,45 @@ function suggestProject(email) {
   return project ? { projectId: bestId, projectName: project.name } : null;
 }
 
-// ─── In-memory state ───────────────────────────────────────────────────────────
-let docChunks     = [];
-let callDocChunks = [];
-let activeProjectId = null;
-let callBrief = null;
-
-let currentCallRecord = null;
-let suggestionMadeThisCall = false;
-let previousProjectId = null;
-
-const transcriptBuffer = [];
+// ─── Module-level shared state ─────────────────────────────────────────────────
 const BUFFER_SIZE = 20;
-
-// Web search state
 let webSearchCfg   = {};   // set via setWebSearchConfig()
 let coachingCfg    = {};   // set via setCoachingConfig()
 let preCallCache   = [];   // [{question, answer, sources}] from /recall/prepare
-let zeroConfidenceLog = []; // questions with no doc match logged for post-call search
 let postSearchResults = []; // [{id, question, answer, sources}] ready for review
 let projectWeights   = {}; // { projectId: { chunkId: weight } } — in-memory cache
-let callAnswerLog    = []; // answers surfaced this call [{id, question, answer, chunkIds, feedback}]
-let callHistoryContext = ''; // injected context from past calls with matched participant
+
+// ─── Session Manager ────────────────────────────────────────────────────────────
+const sessions = new Map(); // Map<botId, SessionState>
+let primaryBotId = null;
+
+function createSession(botId, opts) {
+  sessions.set(botId, {
+    botId,
+    meetingUrl: opts.meetingUrl,
+    projectId:  opts.projectId || null,
+    brief:      opts.brief || null,
+    botOnly:    opts.botOnly || false,
+    docChunks:       [],
+    callDocChunks:   [],
+    callAnswerLog:   [],
+    zeroConfidenceLog: [],
+    transcriptBuffer: [],
+    currentCallRecord: null,
+    suggestionMadeThisCall: false,
+    previousProjectId: null,
+    callHistoryContext: '',
+  });
+}
+
+function getSession(botId) { return sessions.get(botId); }
+
+function endSessionState(botId) {
+  sessions.delete(botId);
+  if (primaryBotId === botId) primaryBotId = [...sessions.keys()].pop() || null;
+}
+
+function getActiveSession() { return primaryBotId ? sessions.get(primaryBotId) : null; }
 
 // ─── Text extraction ───────────────────────────────────────────────────────────
 const PDF_TIMEOUT_MS = 20000;
@@ -273,13 +290,11 @@ function buildHistoryContext(projectId, email) {
     }
   } catch (e) { return ''; }
   if (!allAnswers.length) return '';
-  // Sort: thumbs-up first, then by recency
   allAnswers.sort((a, b) => {
     const s = (x) => x.feedback === 'up' ? 2 : x.feedback === 'down' ? 0 : 1;
     if (s(b) !== s(a)) return s(b) - s(a);
     return new Date(b.callDate) - new Date(a.callDate);
   });
-  // Top 4, truncate answers to keep under ~500 tokens
   return allAnswers.slice(0, 4)
     .map(a => `Q: ${a.question.slice(0, 120)}\nA: ${a.answer.slice(0, 180)}`)
     .join('\n\n');
@@ -302,10 +317,12 @@ function saveWeights(projectId, weights) {
   fs.writeFileSync(weightsPath(projectId), JSON.stringify(weights, null, 2));
 }
 
-// ─── Load project docs into memory ────────────────────────────────────────────
-async function loadProjectDocs(projectId) {
-  docChunks = [];
-  activeProjectId = projectId;
+// ─── Load session docs ────────────────────────────────────────────────────────
+async function loadSessionDocs(botId, projectId) {
+  const session = sessions.get(botId);
+  if (!session) return;
+  session.docChunks = [];
+  session.projectId = projectId;
   const manifest = loadManifest(projectId);
   const uploadsDir = path.join(PROJECTS_DIR, projectId, 'uploads');
   for (const entry of manifest) {
@@ -313,13 +330,21 @@ async function loadProjectDocs(projectId) {
     if (!fs.existsSync(filePath)) continue;
     try {
       const text = await extractText(filePath, '', entry.originalName);
-      docChunks.push(...chunkText(text, entry.originalName));
+      session.docChunks.push(...chunkText(text, entry.originalName));
     } catch (e) {
       console.error(`[docs] Failed to load ${entry.originalName}:`, e.message);
     }
   }
-  projectWeights[projectId] = loadWeights(projectId);
-  console.log(`[projects] Loaded "${projectId}": ${docChunks.length} chunks from ${manifest.length} docs`);
+  if (!projectWeights[projectId]) projectWeights[projectId] = loadWeights(projectId);
+  console.log(`[projects] Loaded "${projectId}" → session ${botId}: ${session.docChunks.length} chunks from ${manifest.length} docs`);
+}
+
+async function reloadProjectForSessions(projectId) {
+  for (const session of sessions.values()) {
+    if (session.projectId === projectId) {
+      await loadSessionDocs(session.botId, projectId);
+    }
+  }
 }
 
 // ─── Live web search ───────────────────────────────────────────────────────────
@@ -349,7 +374,6 @@ async function liveWebSearch(question, quality = 'bestMatch') {
       messages,
     });
 
-    // Collect source URLs from web_search_tool_result blocks
     for (const block of resp.content) {
       if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
         for (const r of block.content) {
@@ -372,7 +396,6 @@ async function liveWebSearch(question, quality = 'bestMatch') {
       };
     }
 
-    // pause_turn or tool_use: continue the agentic loop
     messages.push({ role: 'assistant', content: resp.content });
     messages.push({ role: 'user', content: [{ type: 'text', text: '' }] });
   }
@@ -381,10 +404,10 @@ async function liveWebSearch(question, quality = 'bestMatch') {
 }
 
 // ─── RAG query ─────────────────────────────────────────────────────────────────
-async function ragQuery(question) {
-  const allChunks = [...docChunks, ...callDocChunks];
+async function ragQuery(question, session) {
+  const allChunks = [...(session?.docChunks || []), ...(session?.callDocChunks || [])];
   const qWords = question.toLowerCase().split(/\s+/);
-  const weights = activeProjectId ? (projectWeights[activeProjectId] || {}) : {};
+  const weights = session?.projectId ? (projectWeights[session.projectId] || {}) : {};
   const scored = allChunks.map(chunk => {
     const text = chunk.text.toLowerCase();
     const rawScore = qWords.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
@@ -395,7 +418,6 @@ async function ragQuery(question) {
   const relevantChunks = scored.slice(0, 4).filter(c => c.score > 0);
 
   if (relevantChunks.length === 0) {
-    // Part 1: live web search fallback
     if (webSearchCfg.live) {
       try {
         const webResult = await liveWebSearch(question, webSearchCfg.liveQuality || 'bestMatch');
@@ -404,14 +426,12 @@ async function ragQuery(question) {
         console.error('[live-search] fallback error:', e.message);
       }
     }
-    // Part 3: log for post-call review
-    if (webSearchCfg.postCall) {
-      zeroConfidenceLog.push({ question, ts: Date.now() });
+    if (webSearchCfg.postCall && session) {
+      session.zeroConfidenceLog.push({ question, ts: Date.now() });
     }
     return { answer: null, confidence: 'low' };
   }
 
-  // Separate call-specific docs from project foundation docs
   const callDocMatches = relevantChunks.filter(c => c.isCallDoc);
   const projDocMatches = relevantChunks.filter(c => !c.isCallDoc);
 
@@ -425,34 +445,32 @@ async function ragQuery(question) {
       projDocMatches.map(c => `[${c.source}]\n${c.text}`).join('\n\n---\n\n')
     : '';
 
-  // Part 2: inject pre-call web cache
   const preCallSection = preCallCache.length > 0
     ? '\n\nPRE-CALL WEB RESEARCH:\n' + preCallCache
         .map(r => `Topic: ${r.question}\nAnswer: ${r.answer}`)
         .join('\n\n')
     : '';
 
-  const recentTranscript = transcriptBuffer.slice(-8)
+  const recentTranscript = (session?.transcriptBuffer || []).slice(-8)
     .map(u => `${u.speaker}: ${u.text}`)
     .join('\n');
 
-  const historySection = callHistoryContext
-    ? `\n\nPARTICIPANT HISTORY (lowest priority — historical reference only):\n${callHistoryContext}`
+  const historySection = session?.callHistoryContext
+    ? `\n\nPARTICIPANT HISTORY (lowest priority — historical reference only):\n${session.callHistoryContext}`
     : '';
 
   const systemPrompt = [
     'You are a real-time pitch assistant. A question has come up during a live call.',
     'Answer using ONLY the provided context. Be concise — this appears as an overlay. 2-3 sentences max.',
     'If context lacks enough info, say so briefly.',
-    callBrief
-      ? `\nCALL BRIEF — HIGHEST PRIORITY:\n${callBrief}\n\nThe Call Brief above contains explicit instructions for this call. They take highest priority and override anything in the background documents if there is any conflict. Follow the Brief's tone, format, and positioning instructions exactly. Use the documents only to source factual information, but frame and present that information according to the Brief.`
+    session?.brief
+      ? `\nCALL BRIEF — HIGHEST PRIORITY:\n${session.brief}\n\nThe Call Brief above contains explicit instructions for this call. They take highest priority and override anything in the background documents if there is any conflict. Follow the Brief's tone, format, and positioning instructions exactly. Use the documents only to source factual information, but frame and present that information according to the Brief.`
       : '',
-    callHistoryContext
+    session?.callHistoryContext
       ? 'This participant has been on previous calls. Treat prior history as lowest-priority context only — the Brief and call documents take precedence.'
       : '',
   ].filter(Boolean).join('\n');
 
-  // User prompt ordered by priority: call docs → project docs → pre-call → history
   const docSections = [callDocContext, projDocContext].filter(Boolean).join('\n\n');
 
   const userPrompt = `RECENT CALL TRANSCRIPT:\n${recentTranscript}
@@ -490,7 +508,6 @@ async function prepareCallContext(brief) {
   preCallCache = [];
   if (!brief?.trim()) return { topics: [], count: 0 };
 
-  // Ask Claude Haiku to infer 3-5 likely search topics from the brief
   let topics = [];
   try {
     const resp = await anthropic.messages.create({
@@ -510,7 +527,6 @@ async function prepareCallContext(brief) {
     return { topics: [], count: 0 };
   }
 
-  // Run searches in parallel
   const results = await Promise.all(
     topics.map(async (q) => {
       try {
@@ -530,7 +546,6 @@ async function prepareCallContext(brief) {
 
 // ─── Post-call search (Part 3) ────────────────────────────────────────────────
 async function runPostCallSearch(pendingLog) {
-  // Deduplicate questions
   const seen = new Set();
   const unique = pendingLog.filter(entry => {
     const key = entry.question.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -577,7 +592,6 @@ function loadCompetitorNames(projectId) {
   for (const doc of competitorDocs) {
     try {
       const text = fs.readFileSync(path.join(uploadsDir, doc.storedName), 'utf-8');
-      // Extract proper nouns: capitalized words not at sentence start
       const matches = text.match(/\b[A-Z][a-z]{2,}\b/g) || [];
       names.push(...matches);
     } catch (e) {}
@@ -588,27 +602,32 @@ function loadCompetitorNames(projectId) {
 // ─── Routes: Call docs ────────────────────────────────────────────────────────
 
 app.get('/call/docs', (req, res) => {
-  const sources = [...new Set(callDocChunks.map(c => c.source))];
-  res.json({ sources, totalChunks: callDocChunks.length });
+  const session = getActiveSession();
+  if (!session) return res.json({ sources: [], totalChunks: 0 });
+  const sources = [...new Set(session.callDocChunks.map(c => c.source))];
+  res.json({ sources, totalChunks: session.callDocChunks.length });
 });
 
 app.post('/call/docs/upload', callUpload.array('files'), async (req, res) => {
+  const session = getActiveSession();
+  if (!session) return res.status(400).json({ error: 'No active session' });
   const results = [];
   for (const file of req.files) {
     try {
       const text = await extractText(file.buffer, file.mimetype, file.originalname);
       const chunks = chunkText(text, file.originalname).map(c => ({ ...c, isCallDoc: true }));
-      callDocChunks.push(...chunks);
+      session.callDocChunks.push(...chunks);
       results.push({ name: file.originalname, chunks: chunks.length, status: 'ok' });
     } catch (e) {
       results.push({ name: file.originalname, status: 'error', error: e.message });
     }
   }
-  res.json({ results, totalCallChunks: callDocChunks.length });
+  res.json({ results, totalCallChunks: session.callDocChunks.length });
 });
 
 app.delete('/call/docs', (req, res) => {
-  callDocChunks = [];
+  const session = getActiveSession();
+  if (session) session.callDocChunks = [];
   res.json({ ok: true });
 });
 
@@ -640,7 +659,9 @@ app.delete('/projects/:id', (req, res) => {
   saveProjects(data);
   const dir = path.join(PROJECTS_DIR, id);
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
-  if (activeProjectId === id) { docChunks = []; activeProjectId = null; }
+  for (const session of sessions.values()) {
+    if (session.projectId === id) { session.docChunks = []; session.projectId = null; }
+  }
   res.json({ ok: true });
 });
 
@@ -675,7 +696,7 @@ app.post('/projects/:id/docs/upload', projectUpload.array('files'), async (req, 
     }
   }
   saveManifest(id, manifest);
-  if (activeProjectId === id) await loadProjectDocs(id);
+  await reloadProjectForSessions(id);
   res.json({ results });
 });
 
@@ -687,7 +708,7 @@ app.delete('/projects/:id/docs/:storedName', (req, res) => {
   const filePath = path.join(PROJECTS_DIR, id, 'uploads', storedName);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   saveManifest(id, manifest.filter(m => m.storedName !== storedName));
-  if (activeProjectId === id) loadProjectDocs(id).catch(() => {});
+  reloadProjectForSessions(id).catch(() => {});
   res.json({ ok: true });
 });
 
@@ -696,14 +717,25 @@ app.delete('/projects/:id/docs/:storedName', (req, res) => {
 app.post('/recall/webhook', async (req, res) => {
   res.sendStatus(200);
   const { event, data } = req.body;
+  const botId = data?.bot_id;
+  const session = botId ? sessions.get(botId) : getActiveSession();
+
+  // bot.status_change — bot left or call ended
+  if (event === 'bot.status_change') {
+    const code = data?.data?.code || data?.code;
+    if ((code === 'call_ended' || code === 'done' || code === 'fatal') && session) {
+      webhookCallback?.('bot-left-call', { botId: session.botId });
+    }
+    return;
+  }
+
+  if (!session) return; // unknown session, ignore
 
   // participant.joined (old API) or participant_events.join / participant_events.update (new API)
   const isParticipantJoin = event === 'participant.joined' || event === 'participant_events.join' || event === 'participant_events.update';
   if (isParticipantJoin) {
-    // New API: participant is at data.data.participant; old API: data.participant
     const participant = data?.data?.participant || data?.participant || {};
     const { id, name, email } = participant;
-    // Always emit participant event for sidebar avatar tracking
     if (id || name || email) {
       webhookCallback?.('participant-joined', {
         id:      id || email || name || 'unknown',
@@ -712,34 +744,35 @@ app.post('/recall/webhook', async (req, res) => {
         gravatar: email ? gravatarUrl(email) : '',
       });
     }
-    if (email && currentCallRecord) {
+    if (email && session.currentCallRecord) {
       const lc = email.toLowerCase();
-      if (!currentCallRecord.participantEmails.includes(lc)) {
-        currentCallRecord.participantEmails.push(lc);
-        upsertCallRecord(currentCallRecord);
+      if (!session.currentCallRecord.participantEmails.includes(lc)) {
+        session.currentCallRecord.participantEmails.push(lc);
+        upsertCallRecord(session.currentCallRecord);
       }
-      // Load participant history for context
-      if (!callHistoryContext && activeProjectId) {
-        const hist = buildHistoryContext(activeProjectId, lc);
+      if (!session.callHistoryContext && session.projectId) {
+        const hist = buildHistoryContext(session.projectId, lc);
         if (hist) {
-          callHistoryContext = hist;
+          session.callHistoryContext = hist;
           console.log(`[history] Loaded context for ${lc}`);
         }
       }
 
-      if (!suggestionMadeThisCall) {
+      if (!session.suggestionMadeThisCall) {
         const suggestion = suggestProject(lc);
-        if (suggestion && suggestion.projectId !== activeProjectId) {
-          previousProjectId = activeProjectId;
-          await loadProjectDocs(suggestion.projectId);
-          currentCallRecord.projectId = suggestion.projectId;
-          currentCallRecord.projectName = suggestion.projectName;
-          upsertCallRecord(currentCallRecord);
-          suggestionMadeThisCall = true;
+        if (suggestion && suggestion.projectId !== session.projectId) {
+          session.previousProjectId = session.projectId;
+          await loadSessionDocs(session.botId, suggestion.projectId);
+          if (session.currentCallRecord) {
+            session.currentCallRecord.projectId = suggestion.projectId;
+            session.currentCallRecord.projectName = suggestion.projectName;
+            upsertCallRecord(session.currentCallRecord);
+          }
+          session.suggestionMadeThisCall = true;
           webhookCallback?.('participant-suggestion', {
             projectId: suggestion.projectId,
             projectName: suggestion.projectName,
-            previousProjectId,
+            previousProjectId: session.previousProjectId,
             email: lc,
           });
         }
@@ -747,11 +780,10 @@ app.post('/recall/webhook', async (req, res) => {
     }
   }
 
-  // New API: transcript.data / transcript.partial_data; old API: transcript.partial_update / transcript.word
+  // transcript events
   const isTranscript = event === 'transcript.data' || event === 'transcript.partial_data'
     || event === 'transcript.partial_update' || event === 'transcript.word';
   if (isTranscript) {
-    // New API payload: data.data.words + data.data.participant; old API: data.speaker + data.words
     const inner = data?.data || data;
     const utterance = {
       speaker: inner?.participant?.name || inner?.speaker || 'Unknown',
@@ -759,13 +791,13 @@ app.post('/recall/webhook', async (req, res) => {
       ts: Date.now(),
     };
     if (utterance.text.trim().length > 0) {
-      transcriptBuffer.push(utterance);
-      if (transcriptBuffer.length > BUFFER_SIZE) transcriptBuffer.shift();
+      session.transcriptBuffer.push(utterance);
+      if (session.transcriptBuffer.length > BUFFER_SIZE) session.transcriptBuffer.shift();
       webhookCallback?.('transcript', utterance);
       coaching.onTranscriptEvent({ ...utterance, ts: Date.now() });
       engagement.onTranscriptEvent({ ...utterance, ts: Date.now() });
       if (isQuestion(utterance.text) && utterance.text.split(' ').length > 4) {
-        const result = await ragQuery(utterance.text);
+        const result = await ragQuery(utterance.text, session);
         if (result.answer) {
           const logEntry = {
             id: crypto.randomBytes(4).toString('hex'),
@@ -774,7 +806,7 @@ app.post('/recall/webhook', async (req, res) => {
             chunkIds: result.chunkIds || [],
             feedback: null,
           };
-          callAnswerLog.push(logEntry);
+          session.callAnswerLog.push(logEntry);
           webhookCallback?.('answer', {
             ...logEntry,
             confidence: result.confidence,
@@ -788,47 +820,35 @@ app.post('/recall/webhook', async (req, res) => {
   }
 
   if (event === 'participant.left') {
-    const { id, name, email } = data?.participant || {};
+    const participant = data?.data?.participant || data?.participant || {};
+    const { id, name, email } = participant;
     const participantId = id || email || name || 'unknown';
     webhookCallback?.('participant-left', { id: participantId });
+
+    // Detect if logged-in user left (skip for bot-only sessions)
+    if (email && !session.botOnly) {
+      const cfg = loadConfig();
+      const userEmail = cfg.googleAuth?.email || '';
+      if (userEmail && email.toLowerCase() === userEmail.toLowerCase()) {
+        webhookCallback?.('user-left-call', { botId: session.botId });
+      }
+    }
   }
 });
 
 app.post('/recall/start', async (req, res) => {
   const { meeting_url, project_id, brief, bot_only } = req.body;
   if (!meeting_url) return res.status(400).json({ error: 'meeting_url required' });
+  if (sessions.size >= 3) return res.status(429).json({ error: 'Max 3 concurrent sessions' });
 
-  // Reset per-call state (keep preCallCache — may have been prepared already)
-  callBrief = brief?.trim() || null;
-  suggestionMadeThisCall = false;
-  previousProjectId = null;
-  zeroConfidenceLog = [];
-  postSearchResults = [];
-  callAnswerLog = [];
-  callHistoryContext = '';
-
-  if (project_id && project_id !== activeProjectId) await loadProjectDocs(project_id);
-
-  // Start coaching session with nudge callback
+  // Start coaching/engagement sessions
   coaching.startCoachingSession((nudge) => {
     webhookCallback?.('coaching-nudge', nudge);
   });
-  // Start engagement session with score callback
   engagement.startEngagementSession((scoreData) => {
     webhookCallback?.('engagement-score', scoreData);
   });
-  // Load competitor names from project docs
   loadCompetitorNames(project_id);
-
-  const proj = loadProjects().projects.find(p => p.id === project_id);
-  currentCallRecord = {
-    id: `call_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-    projectId: project_id || null,
-    projectName: proj?.name || null,
-    participantEmails: [],
-    startedAt: new Date().toISOString(),
-  };
-  upsertCallRecord(currentCallRecord);
 
   try {
     const recallBase = process.env.RECALL_REGION
@@ -850,7 +870,7 @@ app.post('/recall/start', async (req, res) => {
           realtime_endpoints: [{
             type: 'webhook',
             url: `${process.env.WEBHOOK_URL}/recall/webhook`,
-            events: ['transcript.data', 'transcript.partial_data', 'participant_events.join', 'participant_events.update'],
+            events: ['transcript.data', 'transcript.partial_data', 'participant_events.join', 'participant_events.update', 'bot.status_change'],
           }],
         },
       }),
@@ -860,8 +880,32 @@ app.post('/recall/start', async (req, res) => {
       const errMsg = bot.detail || bot.message || bot.error || JSON.stringify(bot);
       return res.status(502).json({ error: `Recall API: ${errMsg}` });
     }
-    // Only mark session active after bot is successfully created
-    webhookCallback?.('session-started', { meetingUrl: meeting_url, botOnly: !!bot_only, projectId: project_id });
+
+    // Create session
+    createSession(bot.id, {
+      meetingUrl: meeting_url,
+      projectId:  project_id || null,
+      brief:      brief?.trim() || null,
+      botOnly:    !!bot_only,
+    });
+    primaryBotId = bot.id;
+
+    // Load project docs into session
+    if (project_id) await loadSessionDocs(bot.id, project_id);
+
+    // Create call record
+    const session = sessions.get(bot.id);
+    const proj = loadProjects().projects.find(p => p.id === project_id);
+    session.currentCallRecord = {
+      id: `call_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      projectId: project_id || null,
+      projectName: proj?.name || null,
+      participantEmails: [],
+      startedAt: new Date().toISOString(),
+    };
+    upsertCallRecord(session.currentCallRecord);
+
+    webhookCallback?.('session-started', { botId: bot.id, meetingUrl: meeting_url, botOnly: !!bot_only, projectId: project_id });
     res.json({ bot_id: bot.id, status: bot.status_changes?.[0]?.code });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -882,36 +926,30 @@ app.post('/recall/prepare', async (req, res) => {
   }
 });
 
-// End session — clears call state, triggers post-call search if enabled
+// End session — accepts optional bot_id, clears session state, triggers post-call search
 app.post('/recall/end', async (req, res) => {
-  const pendingLog = [...zeroConfidenceLog];
+  const { bot_id } = req.body || {};
+  const botId = bot_id || primaryBotId;
+  const session = sessions.get(botId);
+  if (!session) return res.json({ ok: true });
+
+  const pendingLog = [...session.zeroConfidenceLog];
 
   // Save call summary before clearing state
-  if (currentCallRecord && activeProjectId && callAnswerLog.length > 0) {
+  if (session.currentCallRecord && session.projectId && session.callAnswerLog.length > 0) {
     saveCallSummary(
-      activeProjectId,
-      currentCallRecord.id,
-      currentCallRecord.participantEmails || [],
-      currentCallRecord.startedAt,
-      [...callAnswerLog]
+      session.projectId,
+      session.currentCallRecord.id,
+      session.currentCallRecord.participantEmails || [],
+      session.currentCallRecord.startedAt,
+      [...session.callAnswerLog]
     );
   }
 
-  // Clear all call-scoped state immediately
-  callBrief        = null;
-  callDocChunks    = [];
-  preCallCache     = [];
-  zeroConfidenceLog = [];
-  callAnswerLog    = [];
-  callHistoryContext = '';
-  currentCallRecord = null;
   coaching.endCoachingSession();
   engagement.endEngagementSession();
-  suggestionMadeThisCall = false;
-  previousProjectId = null;
-  transcriptBuffer.length = 0;
-
-  webhookCallback?.('session-ended', {});
+  endSessionState(botId);
+  webhookCallback?.('session-ended', { botId });
 
   res.json({ ok: true, postSearchPending: webSearchCfg.postCall && pendingLog.length > 0 });
 
@@ -930,12 +968,14 @@ app.post('/recall/end', async (req, res) => {
 app.post('/project/activate', async (req, res) => {
   const { project_id } = req.body;
   if (!project_id) return res.status(400).json({ error: 'project_id required' });
-  await loadProjectDocs(project_id);
-  if (currentCallRecord) {
+  const session = getActiveSession();
+  if (!session) return res.status(400).json({ error: 'No active session' });
+  await loadSessionDocs(session.botId, project_id);
+  if (session.currentCallRecord) {
     const proj = loadProjects().projects.find(p => p.id === project_id);
-    currentCallRecord.projectId = project_id;
-    currentCallRecord.projectName = proj?.name || null;
-    upsertCallRecord(currentCallRecord);
+    session.currentCallRecord.projectId = project_id;
+    session.currentCallRecord.projectName = proj?.name || null;
+    upsertCallRecord(session.currentCallRecord);
   }
   res.json({ ok: true, projectId: project_id });
 });
@@ -973,7 +1013,7 @@ app.post('/postsearch/save', async (req, res) => {
   manifest.push({ storedName, originalName, uploadedAt: new Date().toISOString(), chunks: 1 });
   saveManifest(projectId, manifest);
 
-  if (activeProjectId === projectId) await loadProjectDocs(projectId);
+  await reloadProjectForSessions(projectId);
 
   postSearchResults = postSearchResults.filter(r => r.id !== resultId);
   res.json({ ok: true });
@@ -983,17 +1023,18 @@ app.post('/postsearch/save', async (req, res) => {
 
 app.post('/feedback', (req, res) => {
   const { chunkIds, vote } = req.body;
-  if (!activeProjectId || !Array.isArray(chunkIds) || !chunkIds.length) {
+  const session = getActiveSession();
+  if (!session?.projectId || !Array.isArray(chunkIds) || !chunkIds.length) {
     return res.json({ ok: false, reason: 'no active project or chunks' });
   }
   if (vote !== 'up' && vote !== 'down') {
     return res.status(400).json({ error: 'vote must be "up" or "down"' });
   }
 
-  if (!projectWeights[activeProjectId]) {
-    projectWeights[activeProjectId] = loadWeights(activeProjectId);
+  if (!projectWeights[session.projectId]) {
+    projectWeights[session.projectId] = loadWeights(session.projectId);
   }
-  const weights = projectWeights[activeProjectId];
+  const weights = projectWeights[session.projectId];
 
   for (const id of chunkIds) {
     const current = weights[id] ?? 1.0;
@@ -1002,10 +1043,9 @@ app.post('/feedback', (req, res) => {
       : Math.max(current * 0.5, 0.1);
   }
 
-  saveWeights(activeProjectId, weights);
+  saveWeights(session.projectId, weights);
 
-  // Also record feedback in this call's answer log
-  const logEntry = callAnswerLog.find(e => e.chunkIds.some(id => chunkIds.includes(id)));
+  const logEntry = session.callAnswerLog.find(e => e.chunkIds.some(id => chunkIds.includes(id)));
   if (logEntry) logEntry.feedback = vote;
 
   res.json({ ok: true });
@@ -1023,7 +1063,8 @@ app.post('/coaching/config', (req, res) => {
 app.post('/query', async (req, res) => {
   const { question } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
-  const result = await ragQuery(question);
+  const session = getActiveSession();
+  const result = await ragQuery(question, session);
   res.json(result);
 });
 
@@ -1066,8 +1107,6 @@ app.get('/oauth/callback', async (req, res) => {
     console.log('[oauth] Step 4: tokens saved — expiresAt:', new Date(config.googleAuth.expiresAt).toISOString());
 
     console.log('[oauth] Step 5: calling oauthCompleteCallback — callback present:', !!oauthCompleteCallback);
-    // Pass the full auth object so the IPC broadcast includes accessToken,
-    // which renderers use to detect the signed-in state.
     if (oauthCompleteCallback) oauthCompleteCallback(config.googleAuth);
     console.log('[oauth] Step 5: oauthCompleteCallback called, sending success page');
 
@@ -1086,12 +1125,15 @@ app.get('/oauth/callback', async (req, res) => {
 });
 
 app.get('/health', (req, res) => {
+  const session = getActiveSession();
   res.json({
     status: 'ok',
-    activeProject: activeProjectId,
-    foundationChunks: docChunks.length,
-    callChunks: callDocChunks.length,
-    transcriptBuffer: transcriptBuffer.length,
+    sessions: sessions.size,
+    primaryBotId,
+    activeProject: session?.projectId,
+    foundationChunks: session?.docChunks.length || 0,
+    callChunks: session?.callDocChunks.length || 0,
+    transcriptBuffer: session?.transcriptBuffer.length || 0,
     webSearch: webSearchCfg,
     preCallCache: preCallCache.length,
     postSearchPending: postSearchResults.length,
@@ -1113,7 +1155,6 @@ function setEngagementCfg(cfg) {
 function startWebhookServer(port, callback, onOAuthComplete) {
   webhookCallback = callback;
   oauthCompleteCallback = onOAuthComplete || null;
-  // Silence detection + engagement ticks
   setInterval(() => { coaching.tick(); engagement.tick(); }, 5000);
   app.listen(port, () => {
     console.log(`[server] Kalara server running on port ${port}`);

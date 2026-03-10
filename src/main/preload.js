@@ -100,8 +100,16 @@ contextBridge.exposeInMainWorld('brioAPI', {
     }).then(r => r.json()),
 
   // ─── Session end ───────────────────────────────────────────────────────────
-  endSession: () =>
-    fetch('http://localhost:3847/recall/end', { method: 'POST' }).then(r => r.json()),
+  endSession: (botId) =>
+    fetch('http://localhost:3847/recall/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(botId ? { bot_id: botId } : {}),
+    }).then(r => r.json()),
+
+  keepSessionActive: () => ipcRenderer.send('keep-session-active'),
+  onAutoEndToast: (cb) => ipcRenderer.on('auto-end-toast', (_, d) => cb(d)),
+  onSessionList: (cb) => ipcRenderer.on('session-list', (_, list) => cb(list)),
 
   // ─── Post-search review ────────────────────────────────────────────────────
   getPostSearchResults: () =>
@@ -177,7 +185,7 @@ contextBridge.exposeInMainWorld('brioAPI', {
   trayOpenProjects:    ()       => ipcRenderer.send('tray-open-projects'),
   trayOpenDocManager:  ()       => ipcRenderer.send('tray-open-doc-manager'),
   trayOpenRecallSetup: ()       => ipcRenderer.send('tray-open-recall-setup'),
-  trayEndSession:      ()       => ipcRenderer.send('tray-end-session'),
+  trayEndSession:      (botId)  => ipcRenderer.send('tray-end-session', botId || null),
   trayOpenSettings:    ()       => ipcRenderer.send('tray-open-settings'),
   trayQuit:            ()       => ipcRenderer.send('tray-quit'),
   closeTrayMenu:       ()       => ipcRenderer.send('close-tray-menu'),

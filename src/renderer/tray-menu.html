@@ -328,6 +328,7 @@
     white-space: nowrap;
   }
   .meeting-item.in-progress .meeting-time { color: var(--accent-green); }
+  .meeting-item.overtime .meeting-time { color: #f59e0b; }
 
   @keyframes pulse-dot {
     0%, 100% { transform: scale(1); opacity: 1; }
@@ -536,6 +537,11 @@
     const now     = Date.now();
     const startMs = new Date(startIso).getTime();
     const endMs   = endIso ? new Date(endIso).getTime() : null;
+    // Overtime (past scheduled end)
+    if (endMs && endMs <= now) {
+      const overtimeMin = Math.floor((now - endMs) / 60000);
+      return overtimeMin > 0 ? `${overtimeMin}m overtime` : 'Just ended';
+    }
     // In-progress
     if (startMs <= now && endMs && endMs > now) {
       const minsLeft = Math.ceil((endMs - now) / 60000);
@@ -561,6 +567,11 @@
     return new Date(m.startIso).getTime() <= now && new Date(m.endIso).getTime() > now;
   }
 
+  function isOvertime(m) {
+    if (!m.endIso) return false;
+    return new Date(m.endIso).getTime() <= Date.now();
+  }
+
   function renderMeetings(meetings, signedIn) {
     hideMeetingTooltip();
     meetingsList.innerHTML = '';
@@ -568,9 +579,14 @@
       meetingsSection.style.display = 'none';
       return;
     }
-    // Filter out ended meetings
     const now    = Date.now();
-    const active = (meetings || []).filter(m => !m.endIso || new Date(m.endIso).getTime() > now);
+    // Keep meetings that haven't ended OR are in an active session (overtime)
+    const active = (meetings || []).filter(m => {
+      if (!m.endIso || new Date(m.endIso).getTime() > now) return true;
+      // Keep if there's an active bot session for this meeting URL
+      if (m.meetLink && state.sessions?.some(s => s.meetingUrl === m.meetLink)) return true;
+      return false;
+    });
     if (!active.length) {
       meetingsList.innerHTML = '<div class="no-meetings-msg">No upcoming meetings</div>';
       meetingsSection.style.display = 'block';
@@ -578,9 +594,10 @@
     }
     active.forEach(m => {
       const live      = isInProgress(m);
+      const overtime  = isOvertime(m);
       const botActive = !!(state.botOnlyMeetingUrl && m.meetLink === state.botOnlyMeetingUrl);
       const row       = document.createElement('div');
-      row.className   = 'meeting-item' + (botActive ? ' bot-active' : live ? ' in-progress' : '');
+      row.className   = 'meeting-item' + (botActive ? ' bot-active' : overtime ? ' overtime' : live ? ' in-progress' : '');
       if (m.meetLink) row.dataset.meetlink = m.meetLink;
       row.innerHTML = `
         <svg class="meeting-cal-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -674,7 +691,7 @@
   });
 
   // ── Tray state ────────────────────────────────────────────────────────────
-  let state = { mode: 'passive', sessionActive: false, botOnlyMeetingUrl: null };
+  let state = { mode: 'passive', sessionActive: false, sessions: [], botOnlyMeetingUrl: null };
 
   function applyState(s) {
     state = s;
@@ -683,7 +700,13 @@
     document.getElementById('modeAwareness').classList.toggle('active', s.mode === 'awareness');
     document.getElementById('modeEyeline').classList.toggle('active',   s.mode === 'eyeline');
     document.getElementById('itemStart').style.display = s.sessionActive ? 'none' : '';
-    document.getElementById('itemEnd').style.display   = s.sessionActive ? '' : 'none';
+
+    const endItem = document.getElementById('itemEnd');
+    endItem.style.display = s.sessionActive ? '' : 'none';
+    const sessionCount = s.sessions?.length || 0;
+    endItem.querySelector('.item-label').textContent =
+      sessionCount > 1 ? `End Session (${sessionCount} active)` : 'End Session';
+
     // Update bot-active highlight on already-rendered meeting rows
     meetingsList.querySelectorAll('.meeting-item[data-meetlink]').forEach(row => {
       const isBotActive = s.botOnlyMeetingUrl && row.dataset.meetlink === s.botOnlyMeetingUrl;
@@ -714,7 +737,14 @@
 
   // ── Action items ──────────────────────────────────────────────────────────
   document.getElementById('itemStart').addEventListener('click',    () => { window.brioAPI.trayOpenRecallSetup(); setTimeout(() => window.brioAPI.closeTrayMenu(), 200); });
-  document.getElementById('itemEnd').addEventListener('click',      () => window.brioAPI.trayEndSession());
+  document.getElementById('itemEnd').addEventListener('click', () => {
+    const sessions = state.sessions || [];
+    if (sessions.length === 1) {
+      window.brioAPI.trayEndSession(sessions[0].botId);
+    } else {
+      window.brioAPI.trayEndSession(null); // triggers picker if multiple
+    }
+  });
   document.getElementById('itemProjects').addEventListener('click', () => window.brioAPI.trayOpenProjects());
   document.getElementById('btnTraySettings').addEventListener('click', () => window.brioAPI.trayOpenSettings());
   document.getElementById('btnTraySettingsSignIn').addEventListener('click', () => window.brioAPI.trayOpenSettings());
