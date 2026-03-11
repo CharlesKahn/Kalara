@@ -125,25 +125,187 @@
   }
 
   /* ══════════════════════════════════════════════════════
-     ANSWER BAR
+     ANSWER BAR     ALT BG: #1a1a1f;
+
   ══════════════════════════════════════════════════════ */
 
   #answerBar {
     display: none;
     width: 100vw;
-    height: 68px;
+    height: 170px;
     background:
-      linear-gradient(90deg, rgba(59, 90, 220, 0.18) 0%, transparent 60%),
-      #131318;
+      linear-gradient(90deg, rgba(59, 90, 220, 0.04) 0%, transparent 60%),
+      #121214;
     backdrop-filter: blur(32px) saturate(1.6);
     -webkit-backdrop-filter: blur(32px) saturate(1.6);
     border-bottom: 1px solid var(--glass-border);
-    align-items: center;
-    padding: 0 20px;
-    gap: 16px;
-    -webkit-app-region: drag;
+    flex-direction: column;
+    overflow: hidden;
+    transition: height 150ms ease-out;
+    position: relative;
   }
   #answerBar.show { display: flex; }
+  /* 50% black overlay: from divider line down to bottom (behind countdown bar). Fades in when expanded. */
+  #answerBar::after {
+    content: '';
+    position: absolute;
+    top: 148px; /* main row 170px - divider offset 22px = align with divider line */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 0%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+  }
+  #answerBar.expanded::after {
+    opacity: 1;
+  }
+
+  #answerMainRow {
+    display: flex;
+    align-items: center;
+    height: 170px;
+    flex-shrink: 0;
+    padding: 0 20px;
+    gap: 16px;
+    cursor: pointer;
+  }
+  .topbar-drag-handle {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  #answerDetailRow {
+    display: flex;
+    flex-direction: column;
+    padding: 0 20px 6px;
+    gap: 8px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  #answerBar.expanded #answerDetailRow {
+    padding-top: 0px;
+  }
+  /* Divider: fades in/out with expand. Always present so opacity can transition. */
+  #answerDetailRow::before {
+    content: '';
+    position: absolute;
+    top: -22px;
+    left: 190px;
+    right: 12px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
+  }
+  #answerBar.expanded #answerDetailRow::before {
+    opacity: 1;
+    z-index: 1;
+  }
+
+  #expandedText {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    /* Match main row: signal(8) + gap(16) + label(~61) + divider(1) + gap(16) + answer indent(60) */
+    margin-left: 180px;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 1;
+  }
+  #expandedText ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+  #expandedText li {
+    list-style-type: '• ';
+    margin-bottom: 8px;
+  }
+  #expandedText li:last-child { margin-bottom: 0; }
+
+  .detail-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 162px;
+    margin-bottom: 10px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .expand-progress-track {
+    height: 2px;
+    width: 100%;
+    background: var(--glass-border);
+    margin-top: auto;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  #expandProgressBar {
+    height: 100%;
+    width: 100%;
+    background: #818cf8;
+    box-shadow: 0 0 6px rgba(129,140,248,0.5);
+  }
+  /* 10 seconds left: keyframe animation fades purple→white over 1s, then opacity pulse */
+  .expand-progress-track.urgent #expandProgressBar {
+    animation: expand-urgent-fade 1s ease-out forwards, expand-urgent-pulse 1.2s ease-in-out 1s infinite;
+  }
+  @keyframes expand-urgent-fade {
+    0% {
+      background: #818cf8;
+      box-shadow: 0 0 6px rgba(129,140,248,0.5);
+    }
+    100% {
+      background: #ffffff;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.98), 0 0 28px rgba(255, 255, 255, 0.7);
+    }
+  }
+  @keyframes expand-urgent-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+  }
+
+  #chevronBtn {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    font-size: 14px;
+    line-height: 1;
+  }
+  #chevronBtn:hover { background: var(--inset-bg); color: var(--text-primary); }
+  #chevronBtn .chevron-icon {
+    display: block;
+    width: 12px;
+    height: 8px;
+    transform-origin: center center;
+    transition: transform 0.15s;
+  }
+  #chevronBtn .chevron-icon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #chevronBtn.expanded .chevron-icon { transform: rotate(180deg); }
 
   .signal {
     width: 8px;
@@ -199,9 +361,10 @@
     flex: 1;
     font-size: 13.5px;
     color: var(--text-primary);
-    line-height: 1.5;
+    line-height: 1.65;
     font-weight: 400;
     letter-spacing: 0.01em;
+    margin-left: 60px;
   }
   #answerText .loading {
     color: var(--text-secondary);
@@ -270,9 +433,27 @@
   .thumb-btn:hover { background: var(--inset-bg); }
   .thumb-btn.flash-up   { background: rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.5); }
   .thumb-btn.flash-down { background: rgba(239,68,68,0.2);  border-color: rgba(239,68,68,0.4); }
+  .thumb-btn.selected-up   { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.5); }
+  .thumb-btn.selected-down { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.4); }
+
+  /* Resize handle: drag right edge to change bar width */
+  #topbarResizeHandle {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+    -webkit-app-region: no-drag;
+    z-index: 100;
+    pointer-events: auto;
+  }
+  #topbarResizeHandle:hover { background: rgba(255,255,255,0.06); }
 </style>
 </head>
 <body>
+
+  <div id="topbarResizeHandle" title="Drag to resize width"></div>
 
   <!-- ── Notification panel (amber) ──────────────────────── -->
   <div id="notifPanel">
@@ -305,21 +486,60 @@
 
   <!-- ── Answer bar ──────────────────────────────────────── -->
   <div id="answerBar">
-    <div class="signal" id="signal"></div>
-    <span class="question-label" id="questionLabel">Detected</span>
-    <span class="web-badge" id="webBadge" style="display:none">WEB</span>
-    <div class="divider"></div>
-    <div id="answerText"><span class="loading">Searching docs…</span></div>
-    <div class="sources" id="sources"></div>
-    <div class="conf-dot" id="confDot" title="Confidence"></div>
-    <div class="thumb-group" id="thumbGroup">
-      <button class="thumb-btn" id="thumbUp">👍</button>
-      <button class="thumb-btn" id="thumbDown">👎</button>
+    <div id="answerMainRow">
+      <div class="topbar-drag-handle">
+        <div class="signal" id="signal"></div>
+        <span class="question-label" id="questionLabel">Detected</span>
+        <span class="web-badge" id="webBadge" style="display:none">WEB</span>
+        <div class="divider"></div>
+      </div>
+      <div id="answerText"><span class="loading">Searching docs…</span></div>
+      <button id="chevronBtn"><span class="chevron-icon"><svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3l4 4 4-4"/></svg></span></button>
+      <button class="dismiss" id="dismiss">✕</button>
     </div>
-    <button class="dismiss" id="dismiss">✕</button>
+    <div id="answerDetailRow">
+      <div id="expandedText"></div>
+      <div class="detail-row-actions">
+        <div class="sources" id="sources"></div>
+        <div class="conf-dot" id="confDot" title="Confidence"></div>
+        <div class="thumb-group" id="thumbGroup">
+          <button class="thumb-btn" id="thumbUp">👍</button>
+          <button class="thumb-btn" id="thumbDown">👎</button>
+        </div>
+      </div>
+    </div>
+    <div class="expand-progress-track">
+      <div id="expandProgressBar"></div>
+    </div>
   </div>
 
 <script>
+  (function initTopbarResize() {
+    const handle = document.getElementById('topbarResizeHandle');
+    if (!handle || typeof window.brioAPI?.resizeTopBarWidth !== 'function') return;
+    let startX = 0, startW = 0;
+    function onMove(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const newW = Math.max(400, startW + (e.screenX - startX));
+      window.brioAPI.resizeTopBarWidth(newW);
+    }
+    function onUp(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
+    }
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startX = e.screenX;
+      startW = window.outerWidth;
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+    });
+  })();
+
   const notifPanel   = document.getElementById('notifPanel');
   const notifProject = document.getElementById('notifProject');
   const notifEmail   = document.getElementById('notifEmail');
@@ -329,37 +549,49 @@
   const btnUndo      = document.getElementById('btnUndo');
   const btnSwitch    = document.getElementById('btnSwitch');
 
-  const answerBar    = document.getElementById('answerBar');
-  const answerText   = document.getElementById('answerText');
-  const sourcesEl    = document.getElementById('sources');
-  const signalEl     = document.getElementById('signal');
-  const dismissBtn   = document.getElementById('dismiss');
-  const questionLabel = document.getElementById('questionLabel');
-  const webBadge     = document.getElementById('webBadge');
-  const thumbGroup   = document.getElementById('thumbGroup');
-  const thumbUp      = document.getElementById('thumbUp');
-  const thumbDown    = document.getElementById('thumbDown');
-  const confDot      = document.getElementById('confDot');
+  const answerBar      = document.getElementById('answerBar');
+  const answerMainRow  = document.getElementById('answerMainRow');
+  const answerText     = document.getElementById('answerText');
+  const sourcesEl      = document.getElementById('sources');
+  const signalEl       = document.getElementById('signal');
+  const dismissBtn     = document.getElementById('dismiss');
+  const questionLabel  = document.getElementById('questionLabel');
+  const webBadge       = document.getElementById('webBadge');
+  const thumbGroup     = document.getElementById('thumbGroup');
+  const thumbUp        = document.getElementById('thumbUp');
+  const thumbDown      = document.getElementById('thumbDown');
+  const confDot        = document.getElementById('confDot');
+  const chevronBtn     = document.getElementById('chevronBtn');
+  const expandedTextEl = document.getElementById('expandedText');
 
   let showConfidence = false;
   window.brioAPI.onShowConfidence(val => { showConfidence = val; });
 
-  const NOTIF_H    = 60;
-  const ANSWER_H   = 68;
-  const COACHING_H = 48;
-  const NOTIF_MS   = 8000;
+  const NOTIF_H         = 60;
+  const ANSWER_H_COMPACT = 170;
+  const COACHING_H      = 48;
+  const NOTIF_MS        = 8000;
+  const EXPAND_MS       = 30000;
 
-  let notifVisible  = false;
-  let answerVisible = false;
-  let awarenessMode = false;
+  function currentAnswerH() { return isExpanded ? (expandedBarH || ANSWER_H_COMPACT) : ANSWER_H_COMPACT; }
+
+  let expandedBarH = 0;
+
+  let notifVisible    = false;
+  let answerVisible   = false;
+  let awarenessMode   = false;
   let coachingVisible = false;
-  let notifTimer    = null;
-  let answerTimer   = null;
-  let coachingTimer = null;
+  let notifTimer      = null;
+  let answerTimer     = null;
+  let coachingTimer   = null;
   let previousProjectId = null;
-  let currentChunkIds = [];
-  let dismissMs = 12000;
-  let timerPaused = false;
+  let currentChunkIds   = [];
+  let dismissMs         = 12000;
+  let timerPaused       = false;
+  let isExpanded        = false;
+  let expandTimer       = null;
+  let expandUrgentTimer = null;
+  let currentExpandedAnswer = null;
 
   window.brioAPI.onDismissTimerUpdate(ms => { dismissMs = ms; });
 
@@ -367,13 +599,87 @@
     let h = 0;
     if (notifVisible)    h += NOTIF_H;
     if (coachingVisible) h += COACHING_H;
-    if (answerVisible)   h += ANSWER_H;
+    if (answerVisible)   h += currentAnswerH();
     if (h === 0) {
       window.brioAPI.hideTopBar();
     } else {
       window.brioAPI.resizeTopBar(h);
     }
   }
+
+  // ── Expand / Collapse ───────────────────────────────────────────────────────
+
+  function updateChevron() { chevronBtn.classList.toggle('expanded', isExpanded); }
+
+  const EXPAND_URGENT_AT_MS = 10000; /* 10 seconds left: fade to white and pulse */
+
+  function startExpandTimer() {
+    clearExpandTimer();
+    const track = document.querySelector('.expand-progress-track');
+    if (track) track.classList.remove('urgent');
+    const bar = document.getElementById('expandProgressBar');
+    bar.style.transition = 'none';
+    bar.style.width = '100%';
+    bar.offsetWidth; // force reflow
+    bar.style.transition = `width ${EXPAND_MS}ms linear`;
+    bar.style.width = '0%';
+    expandTimer = setTimeout(() => collapse(), EXPAND_MS);
+    expandUrgentTimer = setTimeout(() => {
+      expandUrgentTimer = null;
+      if (track) track.classList.add('urgent');
+    }, EXPAND_MS - EXPAND_URGENT_AT_MS);
+  }
+
+  function clearExpandTimer() {
+    clearTimeout(expandTimer);
+    expandTimer = null;
+    if (expandUrgentTimer) {
+      clearTimeout(expandUrgentTimer);
+      expandUrgentTimer = null;
+    }
+    const track = document.querySelector('.expand-progress-track');
+    if (track) track.classList.remove('urgent');
+  }
+
+  function expand() {
+    if (!answerVisible || isExpanded) return;
+    isExpanded = true;
+    clearTimeout(answerTimer);
+    answerTimer = null;
+    timerPaused = false;
+    const lines = (currentExpandedAnswer || '').split('\n').filter(l => l.trim());
+    expandedTextEl.innerHTML = '<ul>' + lines.map(l => `<li>${l}</li>`).join('') + '</ul>';
+    requestAnimationFrame(() => {
+      const detailH = document.getElementById('answerDetailRow').offsetHeight;
+      expandedBarH = ANSWER_H_COMPACT + detailH + 24;
+      const totalH = (notifVisible ? NOTIF_H : 0) + (coachingVisible ? COACHING_H : 0) + expandedBarH;
+      window.brioAPI.resizeTopBar(totalH);
+      answerBar.classList.add('expanded');
+      answerBar.style.height = expandedBarH + 'px';
+      updateChevron();
+      startExpandTimer();
+    });
+  }
+
+  function collapse() {
+    if (!isExpanded) return;
+    isExpanded = false;
+    clearExpandTimer();
+    answerBar.classList.remove('expanded');
+    answerBar.style.height = '';
+    updateChevron();
+    setTimeout(() => { if (!isExpanded) syncWindowHeight(); }, 150);
+    if (!awarenessMode && dismissMs > 0) {
+      clearTimeout(answerTimer);
+      answerTimer = setTimeout(() => {
+        answerBar.classList.remove('show');
+        answerVisible = false;
+        syncWindowHeight();
+      }, dismissMs);
+    }
+  }
+
+  // ── Notification panel ──────────────────────────────────────────────────────
 
   function showNotif(payload) {
     notifProject.textContent = payload.projectName;
@@ -457,22 +763,37 @@
     dismissNotif();
   });
 
+  // ── Answer bar ──────────────────────────────────────────────────────────────
+
   function showAnswer(payload) {
     const { answer, confidence, sources = [], chunkIds = [], awarenessMode: am } = payload;
     if (am !== undefined) awarenessMode = am;
     currentChunkIds = chunkIds;
 
+    // Reset expand state for new answer
+    if (isExpanded) {
+      isExpanded = false;
+      clearExpandTimer();
+      answerBar.classList.remove('expanded');
+      answerBar.style.height = '';
+      updateChevron();
+    }
+    currentExpandedAnswer = payload.expandedAnswer || null;
+
     answerText.innerHTML = '<span class="loading">Searching docs…</span>';
     sourcesEl.innerHTML  = '';
     signalEl.className   = 'signal';
     thumbGroup.style.display = 'none';
+    thumbFeedbackSelected = null;
+    thumbUp.classList.remove('selected-up', 'selected-down');
+    thumbDown.classList.remove('selected-up', 'selected-down');
 
     answerVisible = true;
     answerBar.classList.add('show');
     syncWindowHeight();
 
     setTimeout(() => {
-      answerText.textContent = answer;
+      answerText.innerHTML = answer.replace(/\n/g, '<br>');
 
       if (payload.fromWeb) {
         signalEl.className = 'signal web';
@@ -495,8 +816,8 @@
 
       if (currentChunkIds.length) {
         thumbGroup.style.display = 'flex';
-        thumbUp.classList.remove('flash-up', 'flash-down');
-        thumbDown.classList.remove('flash-up', 'flash-down');
+        thumbUp.classList.remove('flash-up', 'flash-down', 'selected-up', 'selected-down');
+        thumbDown.classList.remove('flash-up', 'flash-down', 'selected-up', 'selected-down');
       }
 
       if (showConfidence && !payload.fromWeb) {
@@ -520,14 +841,14 @@
   }
 
   answerBar.addEventListener('mouseenter', () => {
-    if (!answerVisible || awarenessMode || dismissMs <= 0) return;
+    if (!answerVisible || awarenessMode || dismissMs <= 0 || isExpanded) return;
     clearTimeout(answerTimer);
     answerTimer = null;
     timerPaused = true;
   });
 
   answerBar.addEventListener('mouseleave', () => {
-    if (!answerVisible || awarenessMode || dismissMs <= 0 || !timerPaused) return;
+    if (!answerVisible || awarenessMode || dismissMs <= 0 || !timerPaused || isExpanded) return;
     timerPaused = false;
     answerTimer = setTimeout(() => {
       answerBar.classList.remove('show');
@@ -537,10 +858,63 @@
   });
 
   dismissBtn.addEventListener('click', () => {
+    isExpanded = false;
+    clearExpandTimer();
+    answerBar.classList.remove('expanded');
+    answerBar.style.height = '';
+    updateChevron();
     clearTimeout(answerTimer);
     answerBar.classList.remove('show');
     answerVisible = false;
     syncWindowHeight();
+  });
+
+  // Main row: drag to move window, tap to toggle expand/collapse
+  answerMainRow.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#chevronBtn') || e.target.closest('#dismiss')) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startScreenX = e.screenX;
+    const startScreenY = e.screenY;
+    const startWinX    = window.screenX;
+    const startWinY    = window.screenY;
+    let dragged = false;
+
+    function onMove(e) {
+      const dx = e.screenX - startScreenX;
+      const dy = e.screenY - startScreenY;
+      if (!dragged && Math.abs(dx) + Math.abs(dy) > 4) dragged = true;
+      if (dragged) window.brioAPI.setTopBarPosition(startWinX + dx, startWinY + dy);
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup',   onUp,   true);
+      if (!dragged) isExpanded ? collapse() : expand();
+    }
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseup',   onUp,   true);
+  });
+
+  // Detail row click: reset 30s timer only (not when clicking thumbs)
+  document.getElementById('answerDetailRow').addEventListener('click', (e) => {
+    if (e.target.closest('.thumb-group')) return;
+    if (isExpanded) startExpandTimer();
+  });
+
+  // Chevron toggle
+  chevronBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isExpanded ? collapse() : expand();
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowDown') {
+      if (answerVisible && !isExpanded) expand();
+    }
+    if (((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') || e.key === 'Escape') {
+      if (isExpanded) collapse();
+    }
   });
 
   // ── Coaching nudge ──────────────────────────────────────────────────────────
@@ -572,19 +946,26 @@
     syncWindowHeight();
   });
 
-  // ── Feedback ────────────────────────────────────────────────────────────────
-  thumbUp.addEventListener('click', () => {
+  // ── Feedback (toggle: click same again to unselect) ───────────────────────────
+  let thumbFeedbackSelected = null; // 'up' | 'down' | null
+
+  function setThumbState(vote) {
+    thumbFeedbackSelected = vote;
+    thumbUp.classList.toggle('selected-up', vote === 'up');
+    thumbDown.classList.toggle('selected-down', vote === 'down');
+    if (currentChunkIds.length) window.brioAPI.submitFeedback(currentChunkIds, vote).catch(() => {});
+  }
+
+  thumbUp.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (!currentChunkIds.length) return;
-    thumbUp.classList.add('flash-up');
-    setTimeout(() => thumbUp.classList.remove('flash-up'), 600);
-    window.brioAPI.submitFeedback(currentChunkIds, 'up').catch(() => {});
+    setThumbState(thumbFeedbackSelected === 'up' ? null : 'up');
   });
 
-  thumbDown.addEventListener('click', () => {
+  thumbDown.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (!currentChunkIds.length) return;
-    thumbDown.classList.add('flash-down');
-    setTimeout(() => thumbDown.classList.remove('flash-down'), 600);
-    window.brioAPI.submitFeedback(currentChunkIds, 'down').catch(() => {});
+    setThumbState(thumbFeedbackSelected === 'down' ? null : 'down');
   });
 
   // ── IPC listeners ───────────────────────────────────────────────────────────

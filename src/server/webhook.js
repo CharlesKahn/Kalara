@@ -595,8 +595,13 @@ async function ragQuery(question, session) {
 
   const systemPrompt = [
     'You are a real-time pitch assistant. A question has come up during a live call.',
-    'Answer using ONLY the provided context. Be concise — this appears as an overlay. 2-3 sentences max.',
-    'If context lacks enough info, say so briefly.',
+    'Answer using ONLY the provided context.',
+    'Never begin your response with phrases like "Based on the documents", "According to the context", "From the provided context", or any similar preamble. Answer directly and immediately. Every word must earn its place.',
+    'Your response MUST contain exactly two sections separated by the string ---EXPAND--- on its own line.',
+    'SECTION 1 (compact): Start with a short 3-5 word framing phrase followed by a colon (example: "Two revenue vehicles:" or "Three main risks:"). Then put the most essential facts only — maximum 3 lines, each under 15 words. Use line breaks between distinct points.',
+    'SECTION 2 (expanded): 3-5 additional lines written as natural spoken talking points — things you would actually say out loud to an investor. Conversational but precise. No jargon, no passive voice, no corporate language. Use line breaks between distinct points.',
+    'Format exactly as:\n[compact answer]\n---EXPAND---\n[expanded answer]',
+    'If the provided context does not contain enough information to answer the question confidently and specifically, respond with exactly the word SKIP and nothing else.',
     session?.brief
       ? `\nCALL BRIEF — HIGHEST PRIORITY:\n${session.brief}\n\nThe Call Brief above contains explicit instructions for this call. They take highest priority and override anything in the background documents if there is any conflict. Follow the Brief's tone, format, and positioning instructions exactly. Use the documents only to source factual information, but frame and present that information according to the Brief.`
       : '',
@@ -614,17 +619,27 @@ ${question}
 
 ${docSections}${preCallSection}${historySection}
 
-ANSWER (2-3 sentences, direct, no preamble):`;
+RESPONSE:`;
 
+  const ragModel = loadConfig().ragModel || 'claude-haiku-4-5-20251001';
+  console.log('[rag] Using model:', ragModel);
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 300,
+    model: ragModel,
+    max_tokens: 600,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   });
 
+  const answerText = response.content[0].text.trim();
+  if (answerText === 'SKIP') return { answer: null, confidence: 'low' };
+
+  const expandIdx = answerText.indexOf('---EXPAND---');
+  const compact  = expandIdx >= 0 ? answerText.slice(0, expandIdx).trim() : answerText;
+  const expanded = expandIdx >= 0 ? answerText.slice(expandIdx + 12).trim() : null;
+
   return {
-    answer: response.content[0].text,
+    answer: compact,
+    expandedAnswer: expanded,
     confidence: relevantChunks[0].score > 2 ? 'high' : 'medium',
     sources: [...new Set(relevantChunks.map(c => c.source))],
     chunkIds: relevantChunks.map(c => c.id).filter(Boolean),
@@ -846,6 +861,22 @@ app.delete('/projects/:id/docs/:storedName', (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/project/suggest', (req, res) => {
+  const { emails } = req.body;
+  if (!Array.isArray(emails) || emails.length === 0) return res.json({ projectId: null, projectName: null });
+  const counts = {};
+  for (const email of emails) {
+    const s = suggestProject(email);
+    if (s) counts[s.projectId] = (counts[s.projectId] || 0) + 1;
+  }
+  const entries = Object.entries(counts);
+  if (!entries.length) return res.json({ projectId: null, projectName: null });
+  const [bestId] = entries.sort(([, a], [, b]) => b - a)[0];
+  const project = loadProjects().projects.find(p => p.id === bestId);
+  if (!project) return res.json({ projectId: null, projectName: null });
+  res.json({ projectId: bestId, projectName: project.name });
+});
+
 // ─── Routes: Recall ────────────────────────────────────────────────────────────
 
 app.post('/recall/webhook', async (req, res) => {
@@ -858,7 +889,7 @@ app.post('/recall/webhook', async (req, res) => {
   if (event === 'bot.status_change') {
     const code = data?.data?.code || data?.code;
     if ((code === 'call_ended' || code === 'done' || code === 'fatal') && session) {
-      webhookCallback?.('bot-left-call', { botId: session.botId });
+      webhookCallback?.('bot-left-call', { botId: session.botId, transcriptCount: session.fullTranscriptBuffer.length });
     }
     return;
   }
@@ -942,7 +973,8 @@ app.post('/recall/webhook', async (req, res) => {
       webhookCallback?.('transcript', utterance);
       coaching.onTranscriptEvent({ ...utterance, ts: Date.now() });
       engagement.onTranscriptEvent({ ...utterance, ts: Date.now() });
-      if (isQuestion(utterance.text) && utterance.text.split(' ').length > 4) {
+      if (event === 'transcript.data' && isQuestion(utterance.text) && utterance.text.split(' ').length > 4 && Date.now() - (session.lastRagAt || 0) >= 8000) {
+        session.lastRagAt = Date.now();
         const result = await ragQuery(utterance.text, session);
         if (result.answer) {
           const logEntry = {
@@ -955,6 +987,7 @@ app.post('/recall/webhook', async (req, res) => {
           session.callAnswerLog.push(logEntry);
           webhookCallback?.('answer', {
             ...logEntry,
+            expandedAnswer: result.expandedAnswer || null,
             confidence: result.confidence,
             sources: result.sources,
             fromWeb: result.fromWeb || false,
@@ -1076,6 +1109,55 @@ app.post('/recall/start', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Test session — creates a real session without calling the Recall.ai API
+app.post('/recall/start-test', async (req, res) => {
+  const { meeting_url, project_id, brief, bot_only, meeting_title } = req.body;
+  if (!meeting_url) return res.status(400).json({ error: 'meeting_url required' });
+  if (sessions.size >= 3) return res.status(429).json({ error: 'Max 3 concurrent sessions' });
+
+  const resolvedProjectId = project_id || null;
+
+  coaching.startCoachingSession((nudge) => {
+    webhookCallback?.('coaching-nudge', nudge);
+  });
+  engagement.startEngagementSession((scoreData) => {
+    webhookCallback?.('engagement-score', scoreData);
+  });
+  loadCompetitorNames(resolvedProjectId);
+
+  const botId = crypto.randomUUID();
+  const callId = crypto.randomUUID();
+
+  createSession(botId, {
+    meetingUrl:   meeting_url,
+    meetingTitle: meeting_title?.trim() || null,
+    projectId:    resolvedProjectId,
+    brief:        brief?.trim() || null,
+    botOnly:      !!bot_only,
+  });
+  primaryBotId = botId;
+
+  if (resolvedProjectId) await loadSessionDocs(botId, resolvedProjectId);
+
+  const session = sessions.get(botId);
+  const proj = loadProjects().projects.find(p => p.id === resolvedProjectId);
+  session.currentCallRecord = {
+    id: callId,
+    projectId: resolvedProjectId,
+    projectName: proj?.name || null,
+    participantEmails: [],
+    startedAt: new Date().toISOString(),
+  };
+  upsertCallRecord(session.currentCallRecord);
+
+  webhookCallback?.('session-started', {
+    botId, meetingUrl: meeting_url, meetingTitle: meeting_title?.trim() || null,
+    botOnly: !!bot_only, projectId: resolvedProjectId, callId,
+  });
+
+  res.json({ bot_id: botId, call_id: callId, status: 'test_session' });
 });
 
 // Part 2: Pre-call web research

@@ -13,30 +13,54 @@
     user-select: none;
     -webkit-app-region: drag;
     background: var(--card-bg);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.00);
     border-radius: 15px;
-    box-shadow:
-      0 20px 48px rgba(0, 0, 0, 0.35),
-      0 0 0 0.5px rgba(255, 255, 255, 0.05) inset;
-    overflow: hidden;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+    overflow: visible;
     box-sizing: border-box;
     animation: window-appear 200ms ease-out;
     position: relative;
   }
 
-  /* ── Progress bar ─────────────────────────────────────── */
-  .progress-bar {
+  /* ── Progress bar (same colors as bot-left toast), glow inside window ──────── */
+  .progress-bar-wrap {
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 3px;
+    height: 2px;
+    overflow: visible;
+    border-radius: 15px 15px 0 0;
+    z-index: 1;
+  }
+  .progress-bar {
+    position: absolute;
+    inset: 0;
     background: rgba(255,255,255,0.06);
     border-radius: 15px 15px 0 0;
-    overflow: hidden;
+    overflow: visible;
   }
   .progress-fill {
     height: 100%;
-    background: var(--accent-blue);
+    background: var(--accent-blue, #6366f1);
     width: 100%;
+    border-radius: 15px 0 0 15px;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.95), 0 1px 6px rgba(99, 102, 241, 0.8);
+    transition: background 0.6s ease-out, box-shadow 0.6s ease-out;
+  }
+  /* 7 seconds left: transition fades blue→white, then pulse starts after fade */
+  .progress-bar-wrap.urgent .progress-fill {
+    background: #ffffff;
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.98), 0 0 28px rgba(255, 255, 255, 0.7);
+    animation: progress-urgent-pulse 1.2s ease-in-out 0.6s infinite;
+  }
+  @keyframes progress-urgent-pulse {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.98), 0 0 28px rgba(255, 255, 255, 0.7);
+    }
+    50% {
+      opacity: 0.6;
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px rgba(255, 255, 255, 0.35);
+    }
   }
 
   /* ── Close button (wrapper at end of body so it receives clicks) ───────────── */
@@ -82,6 +106,15 @@
     -webkit-app-region: drag;
   }
 
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    -webkit-app-region: no-drag;
+  }
+
   .organizer-avatar {
     width: 38px;
     height: 38px;
@@ -105,6 +138,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    -webkit-app-region: no-drag;
+    cursor: default;
   }
 
   .meeting-time {
@@ -159,6 +194,10 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   }
   #iconTooltip.visible { opacity: 1; }
+  #iconTooltip.title-tooltip {
+    white-space: normal;
+    max-width: 260px;
+  }
 
   /* ── Bottom row: project select + Join ───────────────── */
   .bottom-row {
@@ -167,62 +206,78 @@
     gap: 8px;
     margin-top: 5px;
     -webkit-app-region: no-drag;
+    overflow: visible;
   }
 
+  /* ── Project dropdown (app-style, like recall-setup project browser) ─────── */
   .assign-dropdown {
-    flex: 1;
+    flex: 1 1 0%;
     min-width: 0;
     position: relative;
     -webkit-app-region: no-drag;
+    box-sizing: border-box;
   }
   .assign-trigger {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    box-sizing: border-box;
+    height: 100%;
     min-height: 34px;
     padding: 7px 28px 7px 10px;
     background: var(--inset-bg);
     border: 1px solid var(--glass-border);
     border-radius: 7px;
+    box-sizing: border-box;
     color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
     text-align: left;
+    transition: border-color 0.12s, color 0.12s;
     -webkit-app-region: no-drag;
   }
   .assign-trigger:hover { border-color: rgba(255,255,255,0.16); color: var(--text-primary); }
   .assign-trigger:focus { outline: none; border-color: rgba(59,130,246,0.4); }
   .assign-dropdown.error .assign-trigger { border-color: rgba(239,68,68,0.6); }
+  .assign-dropdown.open .assign-trigger {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-color: rgba(59, 130, 246, 0.4);
+  }
   .assign-trigger-chevron {
     position: absolute;
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-secondary);
-    pointer-events: none;
+    transition: transform 0.2s;
+    flex-shrink: 0;
   }
   .assign-dropdown.open .assign-trigger-chevron { transform: translateY(-50%) rotate(180deg); }
   .assign-panel {
     display: none;
     position: absolute;
-    top: 100%;
+    bottom: 100%;
     left: 0;
     right: 0;
-    margin-top: 2px;
-    z-index: 50;
+    margin-bottom: -1px;
+    z-index: 100;
     background: var(--inset-bg);
     border: 1px solid var(--glass-border);
-    border-radius: 7px;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    border-bottom: none;
+    border-radius: 7px 7px 0 0;
     overflow: hidden;
+    box-shadow: 0 -6px 16px rgba(0,0,0,0.35);
+    transition: border-color 0.12s;
   }
-  .assign-dropdown.open .assign-panel { display: block; }
+  .assign-dropdown.open .assign-panel {
+    display: block;
+    border-color: rgba(59, 130, 246, 0.4);
+  }
   .assign-list {
-    max-height: 192px;
+    max-height: 160px;
     overflow-y: auto;
-    padding: 4px;
+    padding: 6px 8px;
   }
   .assign-item {
     display: block;
@@ -235,10 +290,20 @@
     border-radius: 4px;
     cursor: pointer;
     text-align: left;
+    transition: background 0.12s;
   }
-  .assign-item:hover { background: rgba(255,255,255,0.06); }
-  .assign-item.selected { background: rgba(59,130,246,0.12); color: var(--accent-blue); }
-  .assign-empty { padding: 10px 12px; font-size: 12px; color: var(--text-secondary); }
+  .assign-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .assign-item.selected {
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--accent-blue);
+  }
+  .assign-empty {
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
 
   .btn-send-bot {
     background: var(--inset-bg);
@@ -282,13 +347,15 @@
 </head>
 <body>
 
-<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+<div class="progress-bar-wrap"><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div></div>
 
 <div class="header">
-  <div class="organizer-avatar" id="orgAvatar">?</div>
-  <div class="header-info">
-    <div class="meeting-title" id="alertTitle">Untitled Meeting</div>
-    <div class="meeting-time"  id="alertTime"></div>
+  <div class="header-left" id="headerLeft">
+    <div class="organizer-avatar" id="orgAvatar">?</div>
+    <div class="header-info">
+      <div class="meeting-title" id="alertTitle">Untitled Meeting</div>
+      <div class="meeting-time"  id="alertTime"></div>
+    </div>
   </div>
   <div class="icon-actions">
     <button class="icon-btn" id="btnSnooze" title="Snooze" type="button">
@@ -331,7 +398,9 @@
 <script>
   let meetingData   = null;
   let dismissTimer  = null;
-  const DISMISS_MS  = 60000;
+  let urgentTimer   = null;
+  const DISMISS_MS  = 20000;
+  const URGENT_AT_MS = 7000;   /* switch to urgent style when this many ms left */
 
   // ── Time format ────────────────────────────────────────────────────────────
   function formatMeetingTime(isoString) {
@@ -357,8 +426,11 @@
   setInterval(updateTime, 30000);
 
   // ── Progress bar ──────────────────────────────────────────────────────────
+  const progressBarWrap = document.querySelector('.progress-bar-wrap');
   function startAutoDismiss() {
     if (dismissTimer) clearTimeout(dismissTimer);
+    if (urgentTimer) { clearTimeout(urgentTimer); urgentTimer = null; }
+    progressBarWrap.classList.remove('urgent');
     const fill = document.getElementById('progressFill');
     fill.style.transition = 'none';
     fill.style.width = '100%';
@@ -371,17 +443,44 @@
     dismissTimer = setTimeout(() => {
       window.brioAPI.meetingAlertAction({ action: 'dismiss' });
     }, DISMISS_MS);
+    urgentTimer = setTimeout(() => {
+      urgentTimer = null;
+      progressBarWrap.classList.add('urgent');
+    }, DISMISS_MS - URGENT_AT_MS);
   }
 
   // ── Icon tooltips (custom, since native title often doesn't show in Electron) ─
   const iconTooltip = document.getElementById('iconTooltip');
+  const MARGIN = 8;
+  function clampTooltipToWindow() {
+    const tr = iconTooltip.getBoundingClientRect();
+    let left = parseFloat(iconTooltip.style.left);
+    let top = parseFloat(iconTooltip.style.top);
+    const transform = iconTooltip.style.transform;
+    const isCentered = transform.includes('-50%');
+    const w = tr.width;
+    const h = tr.height;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    if (isCentered) {
+      if (tr.left < MARGIN) iconTooltip.style.left = (left + (MARGIN - tr.left)) + 'px';
+      else if (tr.right > winW - MARGIN) iconTooltip.style.left = (left - (tr.right - (winW - MARGIN))) + 'px';
+    } else {
+      if (tr.right > winW - MARGIN) iconTooltip.style.left = (left - w + (winW - MARGIN - tr.right)) + 'px';
+      else if (tr.left < MARGIN) iconTooltip.style.left = (left + (MARGIN - tr.left)) + 'px';
+    }
+    if (tr.top < MARGIN) iconTooltip.style.top = (parseFloat(iconTooltip.style.top) + (MARGIN - tr.top)) + 'px';
+    else if (tr.bottom > winH - MARGIN) iconTooltip.style.top = (parseFloat(iconTooltip.style.top) - (tr.bottom - (winH - MARGIN))) + 'px';
+  }
   function showIconTooltip(btn, text) {
     iconTooltip.textContent = text;
+    iconTooltip.classList.remove('title-tooltip');
     iconTooltip.classList.add('visible');
     const rect = btn.getBoundingClientRect();
     iconTooltip.style.left = (rect.left + rect.width / 2) + 'px';
     iconTooltip.style.top = (rect.top - 6) + 'px';
     iconTooltip.style.transform = 'translate(-100%, -100%)';
+    clampTooltipToWindow();
   }
   function hideIconTooltip() {
     iconTooltip.classList.remove('visible');
@@ -391,21 +490,39 @@
   document.getElementById('btnCopy').addEventListener('mouseenter', (e) => showIconTooltip(e.currentTarget, 'Copy call link'));
   document.getElementById('btnCopy').addEventListener('mouseleave', hideIconTooltip);
 
-  // ── Load projects into assign dropdown ────────────────────────────────────
-  // TEMP: demo projects for testing dropdown (remove when done)
-  const DEMO_PROJECTS = [
-    { id: 'demo-1', name: 'Q1 Planning' },
-    { id: 'demo-2', name: 'Product Roadmap' },
-    { id: 'demo-3', name: 'Customer Discovery' },
-    { id: 'demo-4', name: 'Engineering Sync' },
-    { id: 'demo-5', name: 'Design Review' },
-    { id: 'demo-6', name: 'Sprint Retrospective' },
-    { id: 'demo-7', name: 'Backlog Grooming' },
-    { id: 'demo-8', name: 'Stakeholder Review' },
-    { id: 'demo-9', name: 'Release Planning' },
-    { id: 'demo-10', name: 'Team Standup' },
-    { id: 'demo-11', name: 'OKR Check-in' },
-  ];
+  // ── Meeting tooltip: one hover zone (avatar + title area), 2s delay ─
+  const titleEl = document.getElementById('alertTitle');
+  const headerLeft = document.getElementById('headerLeft');
+  const MEETING_TOOLTIP_DELAY_MS = 1000;
+  let meetingTooltipTimer = null;
+  function showMeetingTooltip() {
+    const full = (meetingData?.title ?? titleEl.textContent ?? '').trim();
+    if (!full) return;
+    iconTooltip.textContent = full;
+    iconTooltip.classList.remove('title-tooltip');
+    iconTooltip.classList.add('visible', 'title-tooltip');
+    const rect = headerLeft.getBoundingClientRect();
+    iconTooltip.style.left = (rect.left + rect.width / 2) + 'px';
+    iconTooltip.style.top = (rect.top - 6) + 'px';
+    iconTooltip.style.transform = 'translate(-50%, -100%)';
+    clampTooltipToWindow();
+  }
+  headerLeft.addEventListener('mouseenter', () => {
+    if (meetingTooltipTimer) clearTimeout(meetingTooltipTimer);
+    meetingTooltipTimer = setTimeout(() => {
+      meetingTooltipTimer = null;
+      showMeetingTooltip();
+    }, MEETING_TOOLTIP_DELAY_MS);
+  });
+  headerLeft.addEventListener('mouseleave', () => {
+    if (meetingTooltipTimer) {
+      clearTimeout(meetingTooltipTimer);
+      meetingTooltipTimer = null;
+    }
+    hideIconTooltip();
+  });
+
+  // ── Project dropdown (app-style list) ──────────────────────────────────────
   const assignDropdown = document.getElementById('assignDropdown');
   const assignTrigger = document.getElementById('assignTrigger');
   const assignTriggerLabel = document.getElementById('assignTriggerLabel');
@@ -414,9 +531,8 @@
   const assignSelectHidden = document.getElementById('assignSelect');
 
   function renderAssignList(projects) {
-    const list = (projects && projects.length) ? projects : DEMO_PROJECTS;
     assignList.innerHTML = '';
-    if (!list.length) {
+    if (!projects || projects.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'assign-empty';
       empty.textContent = 'No projects yet';
@@ -424,7 +540,7 @@
       return;
     }
     const selectedId = assignSelectHidden.value || '';
-    for (const p of list) {
+    for (const p of projects) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'assign-item' + (selectedId === p.id ? ' selected' : '');
@@ -450,7 +566,19 @@
     if (!assignDropdown.contains(e.target)) assignDropdown.classList.remove('open');
   });
 
-  window.brioAPI.getProjects().then(projects => renderAssignList(projects)).catch(() => renderAssignList([]));
+  // TEMP: demo projects for testing dropdown with multiple items (remove when done)
+  const DEMO_PROJECTS = [
+    { id: 'demo-1', name: 'Q1 Planning' },
+    { id: 'demo-2', name: 'Product Roadmap' },
+    { id: 'demo-3', name: 'Customer Discovery' },
+    { id: 'demo-4', name: 'Engineering Sync' },
+    { id: 'demo-5', name: 'Design Review' },
+    { id: 'demo-6', name: 'Sprint Retrospective' },
+  ];
+  window.brioAPI.getProjects().then(projects => {
+    const list = (projects && projects.length) ? projects : DEMO_PROJECTS;
+    renderAssignList(list);
+  }).catch(() => { renderAssignList(DEMO_PROJECTS); });
 
   // ── Meeting data ──────────────────────────────────────────────────────────
   function applyMeeting(m) {
@@ -504,8 +632,8 @@
   });
 
   function requireProject() {
-    const val = document.getElementById('assignSelect').value;
-    if (!val) {
+    const sel = document.getElementById('assignSelect');
+    if (!sel.value) {
       assignDropdown.classList.add('error');
       setTimeout(() => assignDropdown.classList.remove('error'), 1500);
       return false;

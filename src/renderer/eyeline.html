@@ -113,8 +113,8 @@
     transition: background 0.12s;
   }
   .e-thumb:hover { background: var(--inset-bg); }
-  .e-thumb.flash-up   { background: rgba(34,197,94,0.3);  border-color: rgba(34,197,94,0.5); }
-  .e-thumb.flash-down { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.4); }
+  .e-thumb.selected-up   { background: rgba(34,197,94,0.3);  border-color: rgba(34,197,94,0.5); }
+  .e-thumb.selected-down { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.4); }
 
   .e-conf { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: none; }
   .e-conf.show { display: block; }
@@ -188,14 +188,15 @@
 
     answerText.style.color = '';
     answerText.style.fontStyle = '';
-    answerText.textContent = answer;
+    answerText.innerHTML = answer.replace(/\n/g, '<br>');
     dotEl.style.display = '';
     dotEl.className = `dot${confidence === 'low' ? ' low' : ''}`;
 
     if (chunkIds.length) {
       thumbGroup.classList.add('show');
-      thumbUpBtn.classList.remove('flash-up', 'flash-down');
-      thumbDownBtn.classList.remove('flash-up', 'flash-down');
+      eyelineThumbSelected = null;
+      thumbUpBtn.classList.remove('selected-up', 'selected-down');
+      thumbDownBtn.classList.remove('selected-up', 'selected-down');
     } else {
       thumbGroup.classList.remove('show');
     }
@@ -241,16 +242,24 @@
     window.brioAPI.eyelineResize(isLarge ? 'large' : 'small');
   });
 
-  [thumbUpBtn, thumbDownBtn].forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const vote = btn === thumbUpBtn ? 'up' : 'down';
-      btn.classList.add(vote === 'up' ? 'flash-up' : 'flash-down');
-      setTimeout(() => btn.classList.remove('flash-up', 'flash-down'), 600);
-      if (currentPayload?.chunkIds?.length) {
-        window.brioAPI.submitFeedback(currentPayload.chunkIds, vote).catch(() => {});
-      }
-    });
+  let eyelineThumbSelected = null; // 'up' | 'down' | null
+  function setEyelineThumbState(vote) {
+    eyelineThumbSelected = vote;
+    thumbUpBtn.classList.toggle('selected-up', vote === 'up');
+    thumbDownBtn.classList.toggle('selected-down', vote === 'down');
+    if (currentPayload?.chunkIds?.length) {
+      window.brioAPI.submitFeedback(currentPayload.chunkIds, vote).catch(() => {});
+    }
+  }
+  thumbUpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentPayload?.chunkIds?.length) return;
+    setEyelineThumbState(eyelineThumbSelected === 'up' ? null : 'up');
+  });
+  thumbDownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentPayload?.chunkIds?.length) return;
+    setEyelineThumbState(eyelineThumbSelected === 'down' ? null : 'down');
   });
 
   pill.addEventListener('click', (e) => {

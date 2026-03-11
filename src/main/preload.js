@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('brioAPI', {
   onAwarenessMode: (callback) => ipcRenderer.on('awareness-mode', (_, value) => callback(value)),
   hideTopBar: () => ipcRenderer.send('hide-topbar'),
   resizeTopBar: (height) => ipcRenderer.send('resize-topbar', height),
+  resizeTopBarWidth: (width) => ipcRenderer.send('resize-topbar-width', width),
+  setTopBarPosition: (x, y) => ipcRenderer.send('topbar-set-position', x, y),
 
   // ─── Mid-call project switch ──────────────────────────────────────────────
   activateProject: (projectId) =>
@@ -202,6 +204,7 @@ contextBridge.exposeInMainWorld('brioAPI', {
   // ─── Auto-join ──────────────────────────────────────────────────────────────
   saveBotName:        (name) => ipcRenderer.send('save-bot-name', name),
   saveAutoJoinConfig: (cfg) => ipcRenderer.send('save-autojoin-config', cfg),
+  saveRagModel:       (model) => ipcRenderer.send('save-rag-model', model),
   onAutoJoinToast:    (cb)  => ipcRenderer.on('autojoin-toast', (_, data) => cb(data)),
   onAutoJoinError:    (cb)  => ipcRenderer.on('autojoin-error', (_, msg) => cb(msg)),
   cancelAutoJoin:     ()    => ipcRenderer.send('autojoin-cancel'),

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
+    "preview": "NODE_ENV=development electron src/main/preview.js",
     "build": "electron-builder --mac"
   },
   "devDependencies": {

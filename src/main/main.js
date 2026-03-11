@@ -2,6 +2,7 @@ const { app, BrowserWindow, Tray, screen, ipcMain, nativeImage, globalShortcut, 
 const path = require('path');
 const fs   = require('fs');
 const { startWebhookServer, setWebSearchConfig, setCoachingCfg, setEngagementCfg } = require('../server/webhook');
+const botLeftToastBounds = require('./bot-left-toast-bounds.js');
 
 // ─── Paths ─────────────────────────────────────────────────────────────────────
 const CONFIG_FILE = path.join(__dirname, '../../docs/config.json');
@@ -21,6 +22,7 @@ function saveConfig(data) {
 
 // ─── Module-level state ────────────────────────────────────────────────────────
 let topBarWindow      = null;
+let lastTopbarBounds  = null;
 let sidebarWindow     = null;
 let eyelineWindow     = null;
 let spotlightWindow   = null;
@@ -168,11 +170,12 @@ function openMeetingAlert(meeting) {
     x: sw - 340,
     y: sh - 220,
     frame: false,
-    transparent: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
-    hasShadow: true,
+    hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -206,9 +209,10 @@ function openAutoJoinToast(meeting) {
 function openBotLeftToast(data) {
   if (botLeftToastWindow && !botLeftToastWindow.isDestroyed()) botLeftToastWindow.close();
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  const { width: w, height: h } = botLeftToastBounds;
   botLeftToastWindow = new BrowserWindow({
-    width: 340, height: 100,
-    x: sw - 356, y: sh - 116,
+    width: w, height: h,
+    x: sw - w - 16, y: sh - h - 16,
     frame: false, transparent: true, alwaysOnTop: true,
     skipTaskbar: true, resizable: false, hasShadow: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
@@ -355,6 +359,7 @@ function createTopBar() {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    movable: true,
     hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
@@ -365,6 +370,8 @@ function createTopBar() {
 
   topBarWindow.loadFile(path.join(__dirname, '../renderer/topbar.html'));
   topBarWindow.hide();
+  topBarWindow.on('moved',   () => { lastTopbarBounds = topBarWindow.getBounds(); });
+  topBarWindow.on('resized', () => { lastTopbarBounds = topBarWindow.getBounds(); });
 }
 
 // ─── Window: Sidebar ──────────────────────────────────────────────────────────
@@ -652,10 +659,26 @@ ipcMain.on('window-control', (event, action) => {
 ipcMain.on('hide-topbar', () => topBarWindow?.hide());
 
 ipcMain.on('resize-topbar', (event, height) => {
-  if (topBarWindow) {
-    const { width } = screen.getPrimaryDisplay().workAreaSize;
-    topBarWindow.setSize(width, height);
+  if (!topBarWindow) return;
+  if (lastTopbarBounds) {
+    topBarWindow.setBounds({ x: lastTopbarBounds.x, y: lastTopbarBounds.y, width: lastTopbarBounds.width, height });
+  } else {
+    topBarWindow.setSize(topBarWindow.getBounds().width, height);
   }
+});
+
+ipcMain.on('resize-topbar-width', (event, width) => {
+  if (!topBarWindow) return;
+  const { width: maxW } = screen.getPrimaryDisplay().workAreaSize;
+  const w = Math.round(Math.min(maxW, Math.max(400, width)));
+  const h = topBarWindow.getBounds().height;
+  topBarWindow.setSize(w, h);
+});
+
+ipcMain.on('topbar-set-position', (event, x, y) => {
+  if (!topBarWindow) return;
+  const b = topBarWindow.getBounds();
+  topBarWindow.setBounds({ ...b, x: Math.round(x), y: Math.round(y) });
 });
 
 // Eyeline: mouse event passthrough toggle
@@ -922,6 +945,12 @@ ipcMain.on('save-web-search-config', (event, cfg) => {
   config.webSearch = cfg;
   saveConfig(config);
   setWebSearchConfig(cfg);
+});
+
+ipcMain.on('save-rag-model', (event, model) => {
+  const config = loadConfig();
+  config.ragModel = model;
+  saveConfig(config);
 });
 
 // Theme: save and broadcast to all windows
@@ -1256,7 +1285,7 @@ app.whenReady().then(() => {
       // Bot confirmed call ended — show toast, then end session
       autoEndToastWindow?.close(); autoEndToastWindow = null;
       const sess = activeSessions.get(payload.botId);
-      if (sess) openBotLeftToast({ title: sess.meetingTitle, callId: sess.callId, projectId: sess.projectId, botOnly: sess.botOnly });
+      if (sess && (payload.transcriptCount ?? 0) >= 10) openBotLeftToast({ title: sess.meetingTitle, callId: sess.callId, projectId: sess.projectId, botOnly: sess.botOnly });
       fetch('http://localhost:3847/recall/end', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1286,7 +1315,10 @@ app.whenReady().then(() => {
     }
     if (event === 'session-ended') {
       activeSessions.delete(payload.botId);
-      if (activeSessions.size === 0 && hasValidGoogleToken()) startCalendarPolling();
+      if (activeSessions.size === 0) {
+        lastTopbarBounds = null;
+        if (hasValidGoogleToken()) startCalendarPolling();
+      }
       updateTrayMenu();
     }
     if (event === 'engagement-score') {

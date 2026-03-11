@@ -57,13 +57,13 @@
   .toast-actions {
     display: flex;
     gap: 6px;
-    padding: 0 14px 10px;
+    padding: 0 14px 16px;
     flex-shrink: 0;
   }
 
   .btn {
     flex: 1;
-    padding: 5px 0;
+    padding: 8px 0;
     border-radius: 6px;
     font-size: 11px;
     cursor: pointer;
@@ -132,7 +132,7 @@
 <div class="toast">
   <div class="toast-body">
     <span class="toast-icon">🤖</span>
-    <div class="toast-text" id="toastText">Kalara left <span class="toast-title" id="meetingTitle">the call</span></div>
+    <div class="toast-text" id="toastText">Kalara left · <span class="toast-title" id="meetingTitle">Series A Prep — Sequoia Capital</span></div>
   </div>
   <div class="toast-actions">
     <button class="btn btn-summary" id="btnSummary" disabled>
@@ -153,6 +153,22 @@
   let pollElapsed = 0;
   const POLL_INTERVAL_MS = 2000;
   const POLL_TIMEOUT_MS = 30000;
+
+  let autoDismissTimer = null;
+
+  function startAutoDismiss(seconds) {
+    clearTimeout(autoDismissTimer);
+    const bar = document.getElementById('progressBar');
+    bar.style.transition = 'none';
+    bar.style.width = '100%';
+    bar.offsetWidth; // force reflow so the reset takes effect before animating
+    bar.style.transition = `width ${seconds}s linear`;
+    bar.style.width = '0%';
+    autoDismissTimer = setTimeout(() => {
+      bar.style.transition = 'none';
+      window.close();
+    }, seconds * 1000);
+  }
 
   document.getElementById('btnDismiss').addEventListener('click', () => window.close());
 
@@ -184,6 +200,7 @@
           const btn = document.getElementById('btnSummary');
           btn.disabled = false;
           btn.classList.add('ready');
+          startAutoDismiss(30);
         }
       } catch (e) {}
     }, POLL_INTERVAL_MS);
@@ -197,7 +214,12 @@
       document.getElementById('toastText').innerHTML =
         'Kalara left \u00b7 <span class="toast-title" id="meetingTitle"></span>';
       document.getElementById('meetingTitle').textContent = data.title;
+    } else {
+      const el = document.getElementById('meetingTitle');
+      if (el) el.textContent = 'Series A Prep — Sequoia Capital';
     }
+
+    startAutoDismiss(20);
 
     // Only show summary button if we have a callId to look up
     if (callId) {
