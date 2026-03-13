@@ -262,6 +262,18 @@
     border-radius: var(--radius-sm);
     font-size: 12px;
   }
+  .doc-file-item.processing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+    padding: 9px 12px 10px;
+  }
+  .doc-file-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
   .doc-file-icon  { font-size: 13px; flex-shrink: 0; }
   .doc-file-name  {
     flex: 1;
@@ -273,7 +285,9 @@
     cursor: pointer;
     transition: opacity 0.12s;
   }
+  .doc-file-item.processing .doc-file-name { cursor: default; }
   .doc-file-name:hover { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
+  .doc-file-item.processing .doc-file-name:hover { text-decoration: none; opacity: 0.75; }
   .doc-file-meta  { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-secondary); flex-shrink: 0; white-space: nowrap; }
   .del-btn {
     background: none;
@@ -287,6 +301,25 @@
     opacity: 0.45;
   }
   .del-btn:hover { color: var(--accent-red); opacity: 1; }
+  @keyframes doc-glow-pulse {
+    0%, 100% { opacity: 0.5; box-shadow: 0 0 3px 1px rgba(245,158,11,0.3); }
+    50%       { opacity: 1;   box-shadow: 0 0 8px 3px rgba(245,158,11,0.75); }
+  }
+  .doc-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-amber, #f59e0b);
+    flex-shrink: 0;
+    animation: doc-glow-pulse 1.5s ease-in-out infinite;
+    cursor: default;
+  }
+  .doc-parsing-text {
+    font-size: 11px;
+    color: var(--accent-amber, #f59e0b);
+    opacity: 0.8;
+    padding-left: 21px;
+  }
 
   .doc-status {
     font-family: 'DM Mono', monospace;
@@ -586,21 +619,33 @@
       }
       for (const f of files) {
         const item = document.createElement('div');
-        item.className = 'doc-file-item';
 
-        const sizeStr = formatFileSize(f.size);
-        const dateStr = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString() : '';
-        const meta    = [sizeStr, dateStr].filter(Boolean).join(' · ');
-
-        item.innerHTML = `
-          <span class="doc-file-icon">📄</span>
-          <span class="doc-file-name" title="${escHtml(f.originalName)}">${escHtml(f.originalName)}</span>
-          ${meta ? `<span class="doc-file-meta">${escHtml(meta)}</span>` : ''}
-          <button class="del-btn" title="Remove">✕</button>
-        `;
-        item.querySelector('.doc-file-name').addEventListener('click', () => {
-          if (f.filePath) window.brioAPI.openDocPreview(f.filePath, f.originalName);
-        });
+        if (f.status === 'processing') {
+          item.className = 'doc-file-item processing';
+          item.innerHTML = `
+            <div class="doc-file-item-row">
+              <span class="doc-file-icon">📄</span>
+              <span class="doc-file-name">${escHtml(f.originalName)}</span>
+              <span class="doc-pulse" title="Parsing document, this might take a while…."></span>
+              <button class="del-btn" title="Remove">✕</button>
+            </div>
+            <div class="doc-parsing-text">Parsing document, this might take a while……</div>
+          `;
+        } else {
+          item.className = 'doc-file-item';
+          const sizeStr = formatFileSize(f.size);
+          const dateStr = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString() : '';
+          const meta    = [sizeStr, dateStr].filter(Boolean).join(' · ');
+          item.innerHTML = `
+            <span class="doc-file-icon" title="Document parsed and ready.">📄</span>
+            <span class="doc-file-name" title="${escHtml(f.originalName)}">${escHtml(f.originalName)}</span>
+            ${meta ? `<span class="doc-file-meta">${escHtml(meta)}</span>` : ''}
+            <button class="del-btn" title="Remove">✕</button>
+          `;
+          item.querySelector('.doc-file-name').addEventListener('click', () => {
+            if (f.filePath) window.brioAPI.openDocPreview(f.filePath, f.originalName);
+          });
+        }
         item.querySelector('.del-btn').addEventListener('click', () =>
           removeDoc(projectId, f.storedName, docFileList, docStatus)
         );
@@ -621,27 +666,28 @@
     }
 
     async function uploadFiles(projectId, files, docFileList, docStatus) {
-      docStatus.textContent = `Uploading ${files.length} file(s)…`;
+      docStatus.textContent = `Uploading…`;
       docStatus.className = 'doc-status';
       const formData = new FormData();
       for (const f of files) formData.append('files', f);
       try {
-        const r = await fetch(`http://localhost:3847/projects/${projectId}/docs/upload`, {
+        await fetch(`http://localhost:3847/projects/${projectId}/docs/upload`, {
           method: 'POST',
           body: formData,
         });
-        const result = await r.json();
-        const errors = (result.results || []).filter(f => f.status === 'error');
+        // Server has added files to manifest as 'processing' — reload to show them
         await loadDocsForItem(projectId, docFileList, docStatus);
-        if (errors.length) {
-          docStatus.textContent = `Upload error: ${errors.map(f => f.error || f.name).join(', ')}`;
-          docStatus.className = 'doc-status err';
-        }
       } catch (e) {
         docStatus.textContent = 'Upload failed: ' + e.message;
         docStatus.className = 'doc-status err';
       }
     }
+
+    window.brioAPI.onDocIngested((payload) => {
+      if (openItem?._projectId === payload.projectId) {
+        loadDocsForItem(payload.projectId, openItem._docFileList, openItem._docStatus);
+      }
+    });
 
     loadProjects();
 

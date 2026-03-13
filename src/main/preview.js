@@ -50,7 +50,7 @@ const DUMMY = {
     question: "What's your total addressable market?",
   },
   eyeline: {
-    answer: 'Series A raise: $8M at $32M pre.\nLead investor: Andreessen Horowitz.\nExpected close: end of Q2.',
+    answer: 'Three revenue streams:\nEnterprise SaaS at $50K ARR per year\nChannel partnerships drive 30% of new pipeline\nUsage-based API tier for developer teams',
     confidence: 'high',
     chunkIds: ['chunk-020'],
     fromWeb: false,
@@ -109,14 +109,34 @@ ipcMain.on('eyeline-mouse', (_, ignore) => {
 ipcMain.on('eyeline-resize', (_, size) => {
   if (!previewWindow || previewWindow.isDestroyed()) return;
   const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
-  const w = size === 'large' ? 780 : 450;
-  const h = size === 'large' ? 80  : 52;
+  const w = size === 'large' ? 720 : 450;
+  const h = size === 'large' ? 111 : 88;
   previewWindow.setBounds({ x: Math.round((sw - w) / 2), y: 8, width: w, height: h });
 });
 
 ipcMain.on('meeting-alert-action', () => {
-  previewWindow?.close();
+  if (previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.removeAllListeners('closed');
+    previewWindow.close();
+  }
   previewWindow = null;
+});
+
+ipcMain.on('bot-left-toast-dismiss', () => {
+  const win = previewWindow;
+  if (win && !win.isDestroyed() && currentTarget === 'bot-left-toast') {
+    const duration = 250;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const opacity = Math.max(0, 1 - elapsed / duration);
+      if (win.isDestroyed()) return;
+      win.setOpacity(opacity);
+      if (opacity > 0) setTimeout(tick, 16);
+      else win.close();
+    };
+    tick();
+  }
 });
 
 ipcMain.on('window-control', (event, action) => {
@@ -154,7 +174,7 @@ ipcMain.on('resize-tray-menu', (_, h) => {
   'close-tray-menu', 'keep-session-active', 'autojoin-cancel', 'tray-end-session',
   'open-call-summary', 'spotlight-submit', 'spotlight-close', 'open-in-default-app',
   'tray-prefill-meeting-url', 'open-doc-preview',
-  'meeting-alert-resize', 'meeting-alert-dropdown-open', 'meeting-alert-dropdown-close',
+  'meeting-alert-dropdown-open', 'meeting-alert-dropdown-close',
   'project-dropdown-select',
 ].forEach(ch => ipcMain.on(ch, () => {}));
 
@@ -174,7 +194,7 @@ function openPreview(key) {
   const defs = {
     topbar:          { width: sw,                    height: 170,       x: 0,                          y: 0,            frame: false, transparent: true,  hasShadow: false, file: 'topbar.html' },
     sidebar:         { width: Math.round(sw * 0.32), height: sh,        x: sw - Math.round(sw * 0.32), y: 0,            frame: false, transparent: true,  hasShadow: false, file: 'sidebar.html' },
-    eyeline:         { width: 450,                   height: 52,        x: Math.round((sw - 450) / 2), y: 8,            frame: false, transparent: true,  hasShadow: false, file: 'eyeline.html' },
+    eyeline:         { width: 450,                   height: 88,        x: Math.round((sw - 450) / 2), y: 8,            frame: false, transparent: true,  hasShadow: false, file: 'eyeline.html' },
     'bot-left-toast':{ width: 300,                   height: 100,       x: sw - 316,                   y: sh - 116,     frame: false, transparent: true,  hasShadow: true,  file: 'bot-left-toast.html' },
     'meeting-alert': { width: 345,                   height: 135,       x: sw - 340,                   y: sh - 220,     frame: false, transparent: true,  hasShadow: false, file: 'meeting-alert.html' },
     settings:        { width: 520,                   height: 580,       x: Math.round((sw - 520) / 2), y: Math.round((sh - 580) / 2), frame: false, transparent: true, hasShadow: false, file: 'settings.html' },
@@ -386,7 +406,11 @@ app.whenReady().then(() => {
 
   controlPanel.loadFile(tmpHtml);
   controlPanel.on('closed', () => {
-    previewWindow?.close();
+    if (previewWindow && !previewWindow.isDestroyed()) {
+      previewWindow.removeAllListeners('closed');
+      previewWindow.close();
+    }
+    previewWindow = null;
     app.quit();
   });
 

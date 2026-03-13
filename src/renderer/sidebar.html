@@ -15,13 +15,12 @@
     height: 100vh;
     overflow: hidden;
     border-left: 1px solid rgba(255, 255, 255, 0.08);
-    -webkit-app-region: drag;
     user-select: none;
     animation: none;
   }
 
-  /* ── Collapsed opacity ──────────────────────────────── */
-  body.collapsed { opacity: 0.2; transition: opacity 200ms ease; }
+  /* ── Collapsed: narrow strip on right; ensure we see the right-hand controls ── */
+  body.collapsed { opacity: 0.2; transition: opacity 200ms ease; min-width: 0; }
   body.collapsed:hover { opacity: 0.65; }
   body.collapsed.pulsing {
     opacity: 1;
@@ -29,7 +28,14 @@
     transition: opacity 200ms ease;
   }
 
+  /* ── Just expanded: hide content briefly so window can resize without slide ── */
+  body.just-expanded .content { opacity: 0; pointer-events: none; transition: opacity 0.12s ease-out; }
+  body.just-expanded .header .logo,
+  body.just-expanded .header .live-dot,
+  body.just-expanded .header .settings-btn { opacity: 0; pointer-events: none; }
+
   .header {
+    -webkit-app-region: no-drag;
     padding: 14px 16px 12px;
     border-bottom: 1px solid var(--glass-border);
     display: flex;
@@ -55,6 +61,11 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
+    background: #fb923c;
+    box-shadow: 0 0 6px rgba(251,146,60,0.5);
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .live-dot.call-active {
     background: var(--accent-green);
     box-shadow: 0 0 6px rgba(34,197,94,0.5);
     animation: pulse 1.5s ease-in-out infinite;
@@ -73,11 +84,17 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.12s;
-    opacity: 0;
+    transition: color 0.12s, background 0.12s;
+    transform: translateX(4px);
   }
-  .header:hover .settings-btn { opacity: 0.6; }
-  .settings-btn:hover { opacity: 1 !important; background: var(--inset-bg); }
+  .settings-btn:hover { color: var(--text-primary); background: var(--inset-bg); }
+  .settings-btn .settings-icon {
+    width: 12px;
+    height: 12px;
+    display: block;
+    transform: rotate(90deg);
+  }
+  .settings-btn .settings-icon svg { display: block; width: 100%; height: 100%; }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; }
@@ -85,6 +102,7 @@
   }
 
   .content {
+    -webkit-app-region: no-drag;
     height: calc(100vh - 52px);
     overflow-y: auto;
     display: flex;
@@ -134,7 +152,54 @@
   .query-btn:hover { opacity: 0.8; }
 
   /* Answer cards */
-  .answers-section { padding: 12px 14px; flex: 1; }
+  .answers-section { padding: 12px 14px; flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+
+  /* ─── Project selector overlay ─────────────────────────────────────────── */
+  #projectSelectorOverlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    pointer-events: auto;
+    z-index: 10;
+  }
+  #projectSelectorOverlay.hidden { display: none; }
+  #answersFeed.feed-dimmed { opacity: 0.18; pointer-events: none; }
+  .proj-selector-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-bottom: 12px;
+    line-height: 1.55;
+  }
+  .proj-selector-browser {
+    width: 100%;
+    background: #0b0b10;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .proj-selector-list { padding: 6px 8px; max-height: 220px; overflow-y: auto; }
+  .proj-selector-item {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    padding: 9px 14px;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-radius: 4px;
+    transition: background 0.12s, color 0.12s;
+    -webkit-app-region: no-drag;
+  }
+  .proj-selector-item:hover { background: rgba(255,255,255,0.06); }
+  .proj-selector-item.selected { background: rgba(59,130,246,0.12); color: var(--accent-blue); }
+  .proj-selector-empty { padding: 14px; font-size: 12px; color: var(--text-secondary); text-align: center; }
 
   .section-label {
     font-family: 'DM Mono', monospace;
@@ -156,10 +221,33 @@
     padding: 12px 14px;
     margin-bottom: 10px;
     animation: appear 0.3s ease;
+    position: relative;
   }
 
   .card-question { font-size: 11px; color: var(--text-secondary); margin-bottom: 7px; font-style: italic; line-height: 1.4; }
   .card-answer   { font-size: 12.5px; color: var(--text-primary); line-height: 1.55; }
+
+  .card-copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    transition: opacity 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .answer-card:hover .card-copy-btn { opacity: 0.4; }
+  .card-copy-btn:hover { opacity: 1 !important; color: var(--text-primary); }
 
   .card-meta { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
 
@@ -284,6 +372,7 @@
     color: var(--text-primary);
     border-bottom-color: var(--accent-blue);
     background: rgba(59,130,246,0.06);
+    box-shadow: 0 0 12px rgba(59,130,246,0.08);
   }
   .tab-panel { display: none; }
   .tab-panel.active { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
@@ -304,13 +393,27 @@
     cursor: pointer;
     flex-shrink: 0;
     transition: background 0.12s, color 0.12s;
-    margin-right: 8px;
+    margin-left: 8px;
   }
   #drawerToggle:hover { background: var(--glass-border-strong); color: var(--text-primary); }
-  body.collapsed #drawerToggle { margin-right: 0; }
+  body.collapsed #drawerToggle {
+    margin-left: 0;
+    color: #fbbf7a;
+    background: rgba(251, 146, 60, 0.28);
+    border-color: rgba(251, 146, 60, 0.6);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  body.collapsed #drawerToggle:hover {
+    box-shadow:
+      0 0 0 1px rgba(251, 146, 60, 0.3),
+      0 0 16px rgba(251, 146, 60, 0.35),
+      0 2px 8px rgba(0, 0, 0, 0.35);
+  }
 
   /* ─── Avatar strip (shown when collapsed) ──────────────────────────────── */
   #avatarStrip {
+    -webkit-app-region: no-drag;
     display: none;
     flex-direction: column;
     align-items: center;
@@ -323,7 +426,16 @@
   body.collapsed .content      { display: none; }
   body.collapsed .header .logo { display: none; }
   body.collapsed .header .settings-btn { display: none; }
-  body.collapsed .header       { justify-content: center; padding: 9px 0; border-bottom: none; }
+  /* Put expand button in view: narrow window shows leftmost N px, so put controls on the left. */
+  body.collapsed .header {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    padding: 9px 8px;
+    border-bottom: none;
+  }
+  body.collapsed .header-right {
+    flex-shrink: 0;
+  }
 
   .avatar-circle { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; position: relative; cursor: default; overflow: visible; }
   .avatar-img    { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; }
@@ -382,16 +494,133 @@
   }
   .coaching-card.green { border-color: rgba(34,197,94,0.2); background: rgba(34,197,94,0.06); color: #86efac; }
   .coaching-card-meta { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text-secondary); margin-top: 4px; opacity: 0.6; }
+
+  /* ─── Follow-up / clarification / alternatives buttons ─────────────────── */
+  .card-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+  .not-meant-btn {
+    min-height: 32px;
+    padding: 5px 10px;
+    background: none;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: color 0.12s, background 0.12s;
+    white-space: nowrap;
+  }
+  .not-meant-btn:hover { color: var(--text-primary); background: var(--inset-bg); }
+  .not-meant-btn:disabled { opacity: 0.45; cursor: default; }
+
+  .follow-ups-section {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--glass-border);
+  }
+  .follow-ups-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .follow-up-btn {
+    display: block;
+    width: 100%;
+    min-height: 32px;
+    padding: 7px 11px;
+    margin-bottom: 5px;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    white-space: normal;
+    line-height: 1.4;
+  }
+  .follow-up-btn:last-child { margin-bottom: 0; }
+  .follow-up-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+
+  .card-clarify-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-style: italic;
+  }
+  .card-clarify-options { display: flex; flex-direction: column; gap: 5px; }
+
+  .alt-item { margin-bottom: 5px; }
+  .alt-expand-btn { border-left: 2px solid rgba(59,130,246,0.35) !important; }
+  .alt-answer {
+    display: none;
+    padding: 8px 11px 4px;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+  .alt-answer.visible { display: block; }
+
+  .card-followup-bar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .card-followup-input {
+    flex: 1;
+    background: var(--inset-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 7px 11px;
+    font-size: 12px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s;
+    min-width: 0;
+    min-height: 32px;
+    box-sizing: border-box;
+  }
+  .card-followup-input::placeholder { color: var(--text-secondary); }
+  .card-followup-input:focus { border-color: rgba(59,130,246,0.4); }
+  .card-followup-input.submitted {
+    color: var(--text-secondary);
+    border-color: var(--glass-border);
+    pointer-events: none;
+  }
+  .card-followup-btn {
+    background: var(--accent-blue);
+    border: none;
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    color: white;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+  }
+  .card-followup-btn:hover { opacity: 0.8; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <button id="drawerToggle" title="Collapse">‹</button>
   <span class="logo">Kalara</span>
   <div class="header-right">
-    <div class="live-dot"></div>
-    <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
+    <div class="live-dot" id="liveDot"></div>
+    <button class="settings-btn" id="settingsBtn" title="Settings" aria-label="Settings"><svg class="settings-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg></button>
+    <button id="drawerToggle" title="Collapse">›</button>
   </div>
 </div>
 
@@ -424,8 +653,14 @@
 
   <div class="tab-panel active" id="tabAnswers">
     <div class="answers-section">
-      <div id="answersFeed">
+      <div id="answersFeed" class="feed-dimmed">
         <div class="empty-state">Waiting for questions...</div>
+      </div>
+      <div id="projectSelectorOverlay">
+        <div class="proj-selector-label">Choose a project to search<br>your documents.</div>
+        <div class="proj-selector-browser">
+          <div class="proj-selector-list" id="projSelectorList"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -473,14 +708,53 @@
   let firstAnswer    = true;
   let firstTranscript = true;
   let showConfidence  = false;
+  let manualProjectId = null;
+  let callIsActive    = false;
   window.brioAPI.onShowConfidence(val => { showConfidence = val; });
+
+  const projectSelectorOverlay = document.getElementById('projectSelectorOverlay');
+  const projSelectorList = document.getElementById('projSelectorList');
+
+  function updateSelectorVisibility() {
+    const show = !callIsActive && !manualProjectId;
+    projectSelectorOverlay.classList.toggle('hidden', !show);
+    answersFeed.classList.toggle('feed-dimmed', show);
+  }
+
+  async function loadProjectSelector() {
+    projSelectorList.innerHTML = '';
+    try {
+      const projects = await fetch('http://localhost:3847/projects').then(r => r.json());
+      if (!Array.isArray(projects) || projects.length === 0) {
+        projSelectorList.innerHTML = '<div class="proj-selector-empty">No projects yet</div>';
+        return;
+      }
+      projects.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'proj-selector-item' + (p.id === manualProjectId ? ' selected' : '');
+        btn.textContent = p.name;
+        btn.addEventListener('click', () => {
+          manualProjectId = p.id;
+          projSelectorList.querySelectorAll('.proj-selector-item').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          updateSelectorVisibility();
+        });
+        projSelectorList.appendChild(btn);
+      });
+    } catch (e) {
+      projSelectorList.innerHTML = '<div class="proj-selector-empty">Could not load projects</div>';
+    }
+  }
+
+  loadProjectSelector();
+  updateSelectorVisibility();
 
   function addAnswerCard(payload) {
     if (firstAnswer) { answersFeed.innerHTML = ''; firstAnswer = false; }
     const card = document.createElement('div');
     card.className = 'answer-card';
 
-    const { question, answer, sources = [], chunkIds = [], fromWeb } = payload;
+    const { question, answer, sources = [], chunkIds = [], fromWeb, followUps = [] } = payload;
 
     const sourceTags = sources.slice(0, 2).map(s => {
       if (fromWeb) {
@@ -515,6 +789,28 @@
       <div class="card-meta">${webBadgeHtml}${sourceTags}${confHtml}${thumbsHtml}</div>
     `;
 
+    const cardAnswerEl = card.querySelector('.card-answer');
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'card-copy-btn';
+    copyBtn.title = 'Copy answer';
+    const copyIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+    const checkIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    copyBtn.innerHTML = copyIcon;
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(cardAnswerEl.innerText).then(() => {
+        copyBtn.innerHTML = checkIcon;
+        copyBtn.style.color = 'var(--accent-green)';
+        copyBtn.style.opacity = '0.8';
+        setTimeout(() => {
+          copyBtn.innerHTML = copyIcon;
+          copyBtn.style.color = '';
+          copyBtn.style.opacity = '';
+        }, 2000);
+      }).catch(() => {});
+    });
+    card.appendChild(copyBtn);
+
     if (chunkIds.length) {
       const thumbs = card.querySelector('.card-thumbs');
       thumbs.dataset.currentVote = ''; // 'up' | 'down' | ''
@@ -534,7 +830,56 @@
       });
     }
 
+    // Follow-up questions + inline input
+    const fuSection = document.createElement('div');
+    fuSection.className = 'follow-ups-section';
+    fuSection.innerHTML = '<div class="follow-ups-label">Follow up</div>';
+
+    function collapseToSelected(keepEl) {
+      Array.from(fuSection.children).forEach(child => {
+        if (!child.classList.contains('follow-ups-label') && child !== keepEl) {
+          child.style.display = 'none';
+        }
+      });
+    }
+
+    followUps.forEach(fq => {
+      const btn = document.createElement('button');
+      btn.className = 'follow-up-btn';
+      btn.textContent = fq;
+      btn.addEventListener('click', () => {
+        collapseToSelected(btn);
+        runQuery(fq, { skipAmbiguity: true });
+      });
+      fuSection.appendChild(btn);
+    });
+    const followupBar = document.createElement('div');
+    followupBar.className = 'card-followup-bar';
+    const followupInput = document.createElement('input');
+    followupInput.className = 'card-followup-input';
+    followupInput.type = 'text';
+    followupInput.placeholder = 'Ask a follow-up...';
+    const followupBtn = document.createElement('button');
+    followupBtn.className = 'card-followup-btn';
+    followupBtn.textContent = '→';
+    const submitFollowup = () => {
+      const val = followupInput.value.trim();
+      if (!val) return;
+      followupInput.blur();
+      followupInput.classList.add('submitted');
+      followupBtn.style.display = 'none';
+      collapseToSelected(followupBar);
+      runQuery(val, { skipAmbiguity: true, context: { previousQuestion: question, previousAnswer: answer } });
+    };
+    followupBtn.addEventListener('click', submitFollowup);
+    followupInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitFollowup(); });
+    followupBar.appendChild(followupInput);
+    followupBar.appendChild(followupBtn);
+    fuSection.appendChild(followupBar);
+    card.appendChild(fuSection);
+
     answersFeed.prepend(card);
+    return card;
   }
 
   function addUtterance(payload) {
@@ -608,20 +953,39 @@
   function setCollapsed(collapsed) {
     isCollapsed = collapsed;
     document.body.classList.toggle('collapsed', collapsed);
-    drawerToggle.textContent = collapsed ? '›' : '‹';
+    drawerToggle.textContent = collapsed ? '‹' : '›';
     drawerToggle.title = collapsed ? 'Expand' : 'Collapse';
     const count = Object.keys(participants).length;
     window.brioAPI.sidebarResize(collapsed, count);
     if (!collapsed) nudgeDot.classList.remove('show');
   }
 
-  drawerToggle.addEventListener('click', () => setCollapsed(!isCollapsed));
+  drawerToggle.addEventListener('click', () => {
+    const wasCollapsed = isCollapsed;
+    setCollapsed(!isCollapsed);
+    if (wasCollapsed) {
+      document.body.classList.add('just-expanded');
+      setTimeout(() => document.body.classList.remove('just-expanded'), 140);
+    }
+  });
 
   window.brioAPI.onSidebarCollapsedState(val => {
     isCollapsed = val;
     document.body.classList.toggle('collapsed', val);
-    drawerToggle.textContent = val ? '›' : '‹';
+    drawerToggle.textContent = val ? '‹' : '›';
     drawerToggle.title = val ? 'Expand' : 'Collapse';
+  });
+
+  const liveDot = document.getElementById('liveDot');
+  window.brioAPI.onCallActive(active => {
+    liveDot?.classList.toggle('call-active', !!active);
+    callIsActive = !!active;
+    if (active) {
+      manualProjectId = null;
+    } else {
+      loadProjectSelector();
+    }
+    updateSelectorVisibility();
   });
 
   // ─── Participant avatar tracking ───────────────────────────────────────────
@@ -735,33 +1099,90 @@
     queryInput.select();
   });
 
-  async function runQuery() {
-    const q = queryInput.value.trim();
-    if (!q) return;
-    queryInput.value = '';
+  let _queryQueue = [];
+  let _queryRunning = false;
 
-    if (firstAnswer) { answersFeed.innerHTML = ''; firstAnswer = false; }
-    const loadingCard = document.createElement('div');
-    loadingCard.className = 'answer-card';
-    loadingCard.innerHTML = `
-      <div class="card-question">"${q}"</div>
-      <div class="card-answer" style="color:var(--text-secondary);font-style:italic">Searching docs...</div>
-    `;
-    answersFeed.prepend(loadingCard);
-
-    const result = await window.brioAPI.query(q);
-    loadingCard.remove();
-    addAnswerCard({
-      question: q,
-      answer: result.answer || 'No relevant info found in your documents.',
-      sources: result.sources || [],
-      chunkIds: result.chunkIds || [],
-      fromWeb: result.fromWeb || false,
-    });
+  async function _drainQueue() {
+    if (_queryRunning || _queryQueue.length === 0) return;
+    _queryRunning = true;
+    while (_queryQueue.length > 0) {
+      const { q, options } = _queryQueue.shift();
+      if (firstAnswer) { answersFeed.innerHTML = ''; firstAnswer = false; }
+      const loadingCard = document.createElement('div');
+      loadingCard.className = 'answer-card';
+      loadingCard.innerHTML = `
+        <div class="card-question">"${q}"</div>
+        <div class="card-answer" style="color:var(--text-secondary);font-style:italic">Searching docs...</div>
+      `;
+      answersFeed.prepend(loadingCard);
+      try {
+        const result = await window.brioAPI.query(q, options.context, manualProjectId);
+        loadingCard.remove();
+        addAnswerCard({
+          question: result.correctedQuery || q,
+          answer: result.answer || 'No relevant info found in your documents.',
+          sources: result.sources || [],
+          chunkIds: result.chunkIds || [],
+          fromWeb: result.fromWeb || false,
+          expandedAnswer: result.expandedAnswer,
+          followUps: result.followUps || [],
+        });
+      } catch (e) {
+        loadingCard.remove();
+      }
+    }
+    _queryRunning = false;
   }
 
-  queryBtn.addEventListener('click', runQuery);
+  function runQuery(q, options = {}) {
+    if (typeof q !== 'string') {
+      q = queryInput.value.trim();
+      if (!q) return;
+      queryInput.value = '';
+    }
+    _queryQueue.push({ q, options });
+    _drainQueue();
+  }
+
+  queryBtn.addEventListener('click', () => runQuery());
   queryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
+
+  // ─── Drag to move window + click to focus query input ─────────────────────────
+  const INTERACTIVE = 'button, a, input, textarea, select, [role="button"], .card-answer';
+  const DRAG_THRESHOLD = 5;
+  let _dragStart = null;
+  let _winOrigin = null;
+  let _didDrag   = false;
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest(INTERACTIVE)) return;
+    _dragStart = { mx: e.screenX, my: e.screenY };
+    _winOrigin = { wx: window.screenX, wy: window.screenY };
+    _didDrag   = false;
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!_dragStart) return;
+    const dx = e.screenX - _dragStart.mx;
+    const dy = e.screenY - _dragStart.my;
+    if (!_didDrag && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+      _didDrag = true;
+    }
+    if (_didDrag) {
+      window.brioAPI.sidebarSetPosition(_winOrigin.wx + dx, _winOrigin.wy + dy);
+    }
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!_dragStart) return;
+    const wasDrag = _didDrag;
+    _dragStart = null;
+    _didDrag   = false;
+    if (!wasDrag && !e.target.closest(INTERACTIVE)) {
+      queryInput.focus();
+      queryInput.select();
+    }
+  });
 
   // Theme
   window.brioAPI.getConfig().then(c => document.documentElement.setAttribute('data-theme', c?.theme || 'dark')).catch(() => {});

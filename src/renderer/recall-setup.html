@@ -216,6 +216,13 @@
   .project-browser-wrapper.open .project-browser-body {
     display: block;
   }
+  /* When opened from meeting alert: collapse Select Project (header visible, content hidden; user can expand to change project) */
+  .project-browser-wrapper.from-meeting-alert .project-browser-body {
+    display: none;
+  }
+  .project-browser-wrapper.from-meeting-alert.open .project-browser-body {
+    display: block;
+  }
   .project-browser-wrapper.error .project-browser-body {
     outline: 2px solid rgba(239, 68, 68, 0.7);
     outline-offset: 2px;
@@ -341,6 +348,7 @@
   .call-file-chunks { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-secondary); flex-shrink: 0; }
 
   /* ── Upcoming meetings ──────────────────────────────── */
+  #upcomingSection { margin-top: 8px; }
   .upcoming-list { display: flex; flex-direction: column; gap: 5px; }
   .upcoming-empty { font-size: 12px; color: var(--text-secondary); padding: 8px 0; opacity: 0.6; }
   .upcoming-row {
@@ -588,7 +596,7 @@
 
   /* ── Configure call (simple text accordion) ────────────────────────────────── */
   .configure-call-accordion {
-    margin-top: 4px;
+    margin-top: 0;
   }
   .configure-call-accordion .accordion-row {
     display: flex;
@@ -691,8 +699,8 @@
     <div class="project-browser-wrapper open" id="projectBrowserWrapper">
       <div class="project-browser-row" id="projectBrowserToggle">
         <span class="project-browser-row-text">Select project</span>
-        <svg class="project-browser-row-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none">
-          <path d="M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z" fill="currentColor" opacity="0.5"/>
+        <svg class="project-browser-row-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6 L8 10 L12 6"/>
         </svg>
       </div>
       <div class="project-browser-body" id="projectBrowserBody">
@@ -718,8 +726,8 @@
           <svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5.5" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="4.25" r="0.9" fill="currentColor"/><path d="M6 5.8v3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
           <span class="label-tooltip">Optional: brief, web context, call docs</span>
         </span>
-        <svg class="accordion-chevron" id="configureCallChevron" width="12" height="12" viewBox="0 0 16 16" fill="none">
-          <path d="M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z" fill="currentColor" opacity="0.5"/>
+        <svg class="accordion-chevron" id="configureCallChevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6 L8 10 L12 6"/>
         </svg>
       </div>
       <div class="accordion-body" id="configureCallBody">
@@ -810,6 +818,8 @@
 
     let projectsList      = [];
     let selectedProjectId = null;
+    let prefillMeetingUrlReceived = false;
+    let prefillProjectIdReceived = null; // id or null
 
     // Close button (frameless window)
     closeBtn.addEventListener('click', () => window.close());
@@ -863,11 +873,21 @@
     async function initProjects() {
       try {
         projectsList = await window.brioAPI.getProjects();
+        if (prefillProjectIdReceived && projectsList.some(p => p.id === prefillProjectIdReceived)) {
+          selectedProjectId = prefillProjectIdReceived;
+          projectBrowserWrapper.classList.remove('error');
+        }
         renderProjectList();
       } catch (e) {
         statusEl.textContent = 'Could not load projects';
         statusEl.className = 'status err';
       }
+    }
+
+    function applyMeetingAlertLayout() {
+      projectBrowserWrapper.classList.add('from-meeting-alert');
+      projectBrowserWrapper.classList.remove('open');
+      configureCallSection.classList.add('accordion-open');
     }
 
     projectSearch.addEventListener('input', () => renderProjectList());
@@ -1061,15 +1081,19 @@
 
     window.brioAPI.onUpcomingMeetingsUpdate(renderUpcomingMeetings);
     window.brioAPI.onPrefillMeetingUrl((url) => {
+      prefillMeetingUrlReceived = true;
       meetingUrlInput.value = url;
       meetingUrlInput.focus();
+      if (prefillProjectIdReceived != null) applyMeetingAlertLayout();
     });
     window.brioAPI.onPrefillProject((id) => {
+      prefillProjectIdReceived = id || null;
       if (id && projectsList.some(p => p.id === id)) {
         selectedProjectId = id;
         projectBrowserWrapper.classList.remove('error');
         renderProjectList();
       }
+      if (prefillMeetingUrlReceived) applyMeetingAlertLayout();
     });
     window.brioAPI.getUpcomingMeetings().then(renderUpcomingMeetings).catch(() => {
       upcomingEmpty.textContent = 'Calendar not connected';

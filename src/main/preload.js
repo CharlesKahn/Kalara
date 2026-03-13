@@ -67,11 +67,25 @@ contextBridge.exposeInMainWorld('brioAPI', {
     }).then(r => r.json()),
 
   // ─── Manual query ──────────────────────────────────────────────────────────
-  query: (question) =>
+  query: (question, context, manualProjectId) =>
     fetch('http://localhost:3847/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, ...(context ? { context } : {}), ...(manualProjectId ? { manualProjectId } : {}) }),
+    }).then(r => r.json()),
+
+  checkAmbiguity: (question) =>
+    fetch('http://localhost:3847/query/check-ambiguity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question }),
+    }).then(r => r.json()),
+
+  queryAlternatives: (question, previousAnswer) =>
+    fetch('http://localhost:3847/query/alternatives', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, previousAnswer }),
     }).then(r => r.json()),
 
   // ─── Eyeline pill ──────────────────────────────────────────────────────────
@@ -114,6 +128,7 @@ contextBridge.exposeInMainWorld('brioAPI', {
   keepSessionActive: () => ipcRenderer.send('keep-session-active'),
   onAutoEndToast: (cb) => ipcRenderer.on('auto-end-toast', (_, d) => cb(d)),
   onBotLeftToast: (cb) => ipcRenderer.on('bot-left-toast', (_, d) => cb(d)),
+  botLeftToastDismiss: () => ipcRenderer.send('bot-left-toast-dismiss'),
   onSessionList: (cb) => ipcRenderer.on('session-list', (_, list) => cb(list)),
   openCallSummary: (callId, projectId) => ipcRenderer.send('open-call-summary', { callId, projectId }),
   onCallSummaryData: (cb) => ipcRenderer.on('call-summary-data', (_, d) => cb(d)),
@@ -140,6 +155,10 @@ contextBridge.exposeInMainWorld('brioAPI', {
   onPrefillProject:         (cb) => ipcRenderer.on('prefill-project', (_, id) => cb(id)),
   meetingAlertAction:       (payload) => ipcRenderer.send('meeting-alert-action', payload),
   onMeetingAlertData:       (cb) => ipcRenderer.on('meeting-alert-data', (_, m) => cb(m)),
+  openProjectDropdown:      (opts) => ipcRenderer.invoke('open-project-dropdown', opts),
+  onDropdownData:           (cb) => ipcRenderer.on('dropdown-data', (_, data) => cb(data)),
+  selectProject:            (item) => ipcRenderer.send('dropdown-selected', item),
+  onDropdownSelected:       (cb) => ipcRenderer.on('dropdown-selected', (_, item) => cb(item)),
 
   // ─── Sidebar focus ─────────────────────────────────────────────────────────
   onFocusQuery: (cb) => ipcRenderer.on('focus-query', () => cb()),
@@ -180,9 +199,11 @@ contextBridge.exposeInMainWorld('brioAPI', {
 
   // ─── Sidebar collapse / participant avatars ─────────────────────────────────
   sidebarResize:        (collapsed, avatarCount) => ipcRenderer.send('sidebar-resize', { collapsed, avatarCount }),
+  sidebarSetPosition:   (x, y) => ipcRenderer.send('sidebar-set-position', x, y),
   onParticipantJoined:  (cb) => ipcRenderer.on('participant-joined', (_, p) => cb(p)),
   onParticipantLeft:    (cb) => ipcRenderer.on('participant-left',   (_, p) => cb(p)),
   onSidebarCollapsedState: (cb) => ipcRenderer.on('sidebar-collapsed-state', (_, v) => cb(v)),
+  onCallActive: (cb) => ipcRenderer.on('call-active', (_, active) => cb(active)),
 
   // ─── Window controls (frameless windows: close / minimize / maximize) ─────
   windowControl:       (action) => ipcRenderer.send('window-control', action),
@@ -204,10 +225,14 @@ contextBridge.exposeInMainWorld('brioAPI', {
   // ─── Auto-join ──────────────────────────────────────────────────────────────
   saveBotName:        (name) => ipcRenderer.send('save-bot-name', name),
   saveAutoJoinConfig: (cfg) => ipcRenderer.send('save-autojoin-config', cfg),
-  saveRagModel:       (model) => ipcRenderer.send('save-rag-model', model),
+  saveRagModel:          (model) => ipcRenderer.send('save-rag-model', model),
+  saveIgnoreHostSpeaker: (value) => ipcRenderer.send('save-ignore-host-speaker', value),
   onAutoJoinToast:    (cb)  => ipcRenderer.on('autojoin-toast', (_, data) => cb(data)),
   onAutoJoinError:    (cb)  => ipcRenderer.on('autojoin-error', (_, msg) => cb(msg)),
   cancelAutoJoin:     ()    => ipcRenderer.send('autojoin-cancel'),
+
+  // ─── Doc ingestion ──────────────────────────────────────────────────────────
+  onDocIngested: (cb) => ipcRenderer.on('doc-ingested', (_, payload) => cb(payload)),
 
   // ─── Doc preview ────────────────────────────────────────────────────────────
   openDocPreview:      (filePath, fileName) => ipcRenderer.send('open-doc-preview', { filePath, fileName }),

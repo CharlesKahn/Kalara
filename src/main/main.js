@@ -12,7 +12,7 @@ function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
   } catch (e) {}
-  return { hotkey: 'CommandOrControl+Shift+Space' };
+  return { hotkey: 'CommandOrControl+Shift+Space', ragModel: 'claude-haiku-4-5-20251001', ignoreHostSpeaker: true };
 }
 
 function saveConfig(data) {
@@ -37,6 +37,8 @@ let coachingMode     = false;
 let oauthWindow      = null;
 let recallSetupWindow = null;
 let meetingAlertWindow = null;
+let projectDropdownWindow = null;
+let projectDropdownAlertOwner = null;
 let docPreviewWindow   = null;
 let docPreviewFilePath = null;
 let calendarPollTimer  = null;
@@ -44,8 +46,10 @@ let cachedMeetings     = [];
 const alertedMeetingIds  = new Set();
 const autoJoinedEventIds = new Set();
 let autoJoinToastWindow  = null;
+let summaryToastWindow   = null;
 let autoEndToastWindow   = null;
 let botLeftToastWindow   = null;
+let projectsWindow       = null;
 
 // Multi-session state: Map<botId, { meetingUrl, botOnly, projectId }>
 const activeSessions = new Map();
@@ -167,15 +171,16 @@ function openMeetingAlert(meeting) {
   meetingAlertWindow = new BrowserWindow({
     width: 345,
     height: 135,
-    x: sw - 340,
+    x: sw - 355,
     y: sh - 220,
     frame: false,
     transparent: true,
-    backgroundColor: '#00000000',
+    backgroundColor: '#0d0d12',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -186,6 +191,40 @@ function openMeetingAlert(meeting) {
   meetingAlertWindow.on('closed', () => { meetingAlertWindow = null; });
   meetingAlertWindow.webContents.once('did-finish-load', () => {
     meetingAlertWindow?.webContents.send('meeting-alert-data', meeting);
+    meetingAlertWindow?.show();
+  });
+}
+
+function openSummaryToast(message) {
+  if (summaryToastWindow && !summaryToastWindow.isDestroyed()) summaryToastWindow.close();
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  summaryToastWindow = new BrowserWindow({
+    width: 320, height: 44,
+    x: sw - 336, y: sh - 60,
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, hasShadow: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  summaryToastWindow.loadURL(
+    `file://${path.join(__dirname, '../renderer/summary-toast.html')}?msg=${encodeURIComponent(message)}`
+  );
+  summaryToastWindow.on('closed', () => { summaryToastWindow = null; });
+  summaryToastWindow.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      const win = summaryToastWindow;
+      if (!win || win.isDestroyed()) return;
+      const duration = 500;
+      const start = Date.now();
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const opacity = Math.max(0, 1 - elapsed / duration);
+        if (win.isDestroyed()) return;
+        win.setOpacity(opacity);
+        if (opacity > 0) setTimeout(tick, 16);
+        else win.close();
+      };
+      tick();
+    }, 3000);
   });
 }
 
@@ -223,6 +262,23 @@ function openBotLeftToast(data) {
     botLeftToastWindow?.webContents.send('bot-left-toast', data);
   });
 }
+
+ipcMain.on('bot-left-toast-dismiss', () => {
+  const win = botLeftToastWindow;
+  if (win && !win.isDestroyed()) {
+    const duration = 250;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const opacity = Math.max(0, 1 - elapsed / duration);
+      if (win.isDestroyed()) return;
+      win.setOpacity(opacity);
+      if (opacity > 0) setTimeout(tick, 16);
+      else win.close();
+    };
+    tick();
+  }
+});
 
 async function autoJoinMeeting(meeting) {
   autoJoinedEventIds.add(meeting.id);
@@ -405,7 +461,7 @@ function createSidebar() {
 function createEyeline() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   const pillW = 450;
-  const pillH = 52;
+  const pillH = 88;
 
   eyelineWindow = new BrowserWindow({
     width: pillW,
@@ -490,13 +546,12 @@ function setMode(mode) {
 
   if (awarenessMode) {
     sidebarWindow?.show();
-    // Restore collapsed state
-    const cfg = loadConfig();
-    if (cfg.sidebarCollapsed) {
-      const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
-      sidebarWindow.setBounds({ x: sw - 42, y: 24, width: 42, height: 80 });
-      sidebarWindow?.webContents.send('sidebar-collapsed-state', true);
-    }
+    sidebarWindow?.webContents.send('call-active', activeSessions.size > 0);
+    // Always open expanded (avoids initial collapsed layout glitch; user can minimize after)
+    const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+    const fullWidth = Math.round(sw * 0.32);
+    sidebarWindow?.setBounds({ x: sw - fullWidth, y: 0, width: fullWidth, height: sh }, true);
+    sidebarWindow?.webContents.send('sidebar-collapsed-state', false);
   } else {
     sidebarWindow?.hide();
   }
@@ -686,12 +741,12 @@ ipcMain.on('eyeline-mouse', (event, ignore) => {
   eyelineWindow?.setIgnoreMouseEvents(ignore, { forward: true });
 });
 
-// Eyeline: resize between small (450×52) and large (780×80)
+// Eyeline: resize between small (450×88) and large (720×111)
 ipcMain.on('eyeline-resize', (event, size) => {
   if (!eyelineWindow) return;
   const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
-  const w = size === 'large' ? 780 : 450;
-  const h = size === 'large' ? 80  : 52;
+  const w = size === 'large' ? 720 : 450;
+  const h = size === 'large' ? 111 : 88;
   eyelineWindow.setBounds({ x: Math.round((sw - w) / 2), y: 8, width: w, height: h });
 });
 
@@ -846,11 +901,102 @@ ipcMain.on('tray-prefill-meeting-url', (_, url) => {
   openRecallSetup(url);
 });
 
+function closeProjectDropdownIfOpen() {
+  if (projectDropdownWindow && !projectDropdownWindow.isDestroyed()) projectDropdownWindow.close();
+}
+
+// Meeting alert: open project dropdown in a second window (extends beyond alert bounds)
+ipcMain.handle('open-project-dropdown', (event, payload) => {
+  console.log('open-project-dropdown called', payload);
+  try {
+    const { left = 0, bottom = 0, width = 200, items = [], selectedId = '' } = payload || {};
+    if (projectDropdownWindow && !projectDropdownWindow.isDestroyed()) projectDropdownWindow.close();
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const bounds = owner && !owner.isDestroyed() ? owner.getBounds() : { x: 0, y: 0 };
+    let x = Math.round(bounds.x + left);
+    let y = Math.round(bounds.y + bottom) + 4;
+    const display = screen.getDisplayMatching({ x, y, width: 10, height: 10 });
+    const workArea = display.workArea;
+    const winWidth = Math.max(140, (width || 200) + 24);
+    const itemCount = Array.isArray(items) ? items.length : 0;
+    const height = Math.min(200, Math.max(52, (itemCount * 36) + 16));
+    const maxY = workArea.y + workArea.height - height;
+    if (y > maxY) y = maxY;
+    if (x < workArea.x) x = workArea.x;
+    if (x + winWidth > workArea.x + workArea.width) x = workArea.x + workArea.width - winWidth;
+    projectDropdownAlertOwner = owner;
+    owner.on('focus', closeProjectDropdownIfOpen);
+    projectDropdownWindow = new BrowserWindow({
+      width: winWidth,
+      height,
+      x,
+      y,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      hasShadow: true,
+      show: false, // show only in did-finish-load after dropdown-data is sent to avoid dark flash
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+      },
+    });
+    projectDropdownWindow.on('closed', () => {
+      projectDropdownAlertOwner?.removeListener('focus', closeProjectDropdownIfOpen);
+      projectDropdownAlertOwner = null;
+      projectDropdownWindow = null;
+    });
+    projectDropdownWindow.on('blur', () => {
+      if (projectDropdownWindow && !projectDropdownWindow.isDestroyed()) projectDropdownWindow.close();
+    });
+    projectDropdownWindow.loadFile(path.join(__dirname, '../renderer/project-dropdown.html'));
+    projectDropdownWindow.webContents.once('did-finish-load', () => {
+      if (projectDropdownWindow && !projectDropdownWindow.isDestroyed()) {
+        projectDropdownWindow.webContents.send('dropdown-data', { items: items || [], selectedId: selectedId || '' });
+        projectDropdownWindow.show(); // after dropdown-data so content is ready; avoids dark background flash
+        projectDropdownWindow.focus();
+      }
+    });
+    return { ok: true };
+  } catch (err) {
+    console.error('[project-dropdown]', err);
+    return { ok: false };
+  }
+});
+
+ipcMain.on('dropdown-selected', (event, item) => {
+  if (meetingAlertWindow && !meetingAlertWindow.isDestroyed()) {
+    meetingAlertWindow.webContents.send('dropdown-selected', item);
+  }
+  if (projectDropdownWindow && !projectDropdownWindow.isDestroyed()) projectDropdownWindow.close();
+});
+
 // Meeting alert action: start session, snooze, or dismiss
 ipcMain.on('meeting-alert-action', (event, { action, meetLink, projectId, meetingData }) => {
   if (action === 'snooze') {
     meetingAlertWindow?.close();
     if (meetingData) setTimeout(() => openMeetingAlert(meetingData), 5 * 60 * 1000);
+    return;
+  }
+  if (action === 'dismiss') {
+    const win = meetingAlertWindow;
+    if (win && !win.isDestroyed()) {
+      const duration = 250;
+      const start = Date.now();
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const opacity = Math.max(0, 1 - elapsed / duration);
+        if (win.isDestroyed()) return;
+        win.setOpacity(opacity);
+        if (opacity > 0) setTimeout(tick, 16);
+        else win.close();
+      };
+      tick();
+    }
     return;
   }
   meetingAlertWindow?.close();
@@ -875,6 +1021,10 @@ ipcMain.on('meeting-alert-action', (event, { action, meetLink, projectId, meetin
 });
 
 // Sidebar collapse/expand
+ipcMain.on('sidebar-set-position', (_, x, y) => {
+  sidebarWindow?.setPosition(Math.round(x), Math.round(y));
+});
+
 ipcMain.on('sidebar-resize', (event, { collapsed, avatarCount }) => {
   if (!sidebarWindow) return;
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
@@ -950,6 +1100,12 @@ ipcMain.on('save-web-search-config', (event, cfg) => {
 ipcMain.on('save-rag-model', (event, model) => {
   const config = loadConfig();
   config.ragModel = model;
+  saveConfig(config);
+});
+
+ipcMain.on('save-ignore-host-speaker', (event, value) => {
+  const config = loadConfig();
+  config.ignoreHostSpeaker = value;
   saveConfig(config);
 });
 
@@ -1033,14 +1189,19 @@ ipcMain.on('save-dismiss-timer', (event, ms) => {
 
 // ─── Utility windows ──────────────────────────────────────────────────────────
 function openProjects() {
-  const win = new BrowserWindow({
+  if (projectsWindow && !projectsWindow.isDestroyed()) {
+    projectsWindow.focus();
+    return;
+  }
+  projectsWindow = new BrowserWindow({
     width: 520, height: 640,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
-  win.loadFile(path.join(__dirname, '../renderer/projects.html'));
+  projectsWindow.loadFile(path.join(__dirname, '../renderer/projects.html'));
+  projectsWindow.on('closed', () => { projectsWindow = null; });
 }
 
 
@@ -1190,6 +1351,17 @@ app.whenReady().then(() => {
 
   const config = loadConfig();
   registerHotkeys(config.hotkey || 'CommandOrControl+Shift+Space', config.dismissHotkey || 'Escape');
+
+  // Migrate old webSearch.live key → liveAuto + liveManual
+  if (config.webSearch && 'live' in config.webSearch && !('liveAuto' in config.webSearch)) {
+    const oldVal = config.webSearch.live;
+    config.webSearch.liveAuto   = oldVal;
+    config.webSearch.liveManual = oldVal;
+    delete config.webSearch.live;
+    saveConfig(config);
+    console.log('[config] Migrated webSearch.live →', { liveAuto: oldVal, liveManual: oldVal });
+  }
+  console.log('[config] webSearch:', config.webSearch || {});
   setWebSearchConfig(config.webSearch || {});
   if (config.coaching) {
     coachingMode = config.coaching.enabled || false;
@@ -1244,6 +1416,7 @@ app.whenReady().then(() => {
     topBarWindow?.webContents.send('show-confidence', showConf);
     topBarWindow?.webContents.send('dismiss-timer-update', dismissMs);
     sidebarWindow?.webContents.send('show-confidence', showConf);
+    sidebarWindow?.webContents.send('call-active', activeSessions.size > 0);
     eyelineWindow?.webContents.send('show-confidence', showConf);
     if (eyelineMode) {
       eyelineWindow?.webContents.send('eyeline-behavior', config.eyelineBehavior || 'passive');
@@ -1312,6 +1485,7 @@ app.whenReady().then(() => {
         const cfg = loadConfig(); cfg.lastProjectId = payload.projectId; saveConfig(cfg);
       }
       updateTrayMenu();
+      sidebarWindow?.webContents.send('call-active', true);
     }
     if (event === 'session-ended') {
       activeSessions.delete(payload.botId);
@@ -1320,6 +1494,7 @@ app.whenReady().then(() => {
         if (hasValidGoogleToken()) startCalendarPolling();
       }
       updateTrayMenu();
+      sidebarWindow?.webContents.send('call-active', activeSessions.size > 0);
     }
     if (event === 'engagement-score') {
       sidebarWindow?.webContents.send('engagement-score', payload);
@@ -1327,8 +1502,18 @@ app.whenReady().then(() => {
     if (event === 'participant-joined') {
       sidebarWindow?.webContents.send('participant-joined', payload);
     }
+    if (event === 'project-summary-updated') {
+      openSummaryToast(`Project "${payload.projectName}" summary updated`);
+    }
+    if (event === 'doc-ingested') {
+      openSummaryToast(`${payload.name} ingested`);
+      BrowserWindow.getAllWindows().forEach(w => { if (!w.isDestroyed()) w.webContents.send('doc-ingested', payload); });
+    }
     if (event === 'participant-left') {
       sidebarWindow?.webContents.send('participant-left', payload);
+    }
+    if (event === 'meeting-alert-data') {
+      openMeetingAlert(payload);
     }
   }, (profile) => {
     oauthWindow?.close();

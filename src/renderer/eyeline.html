@@ -59,13 +59,14 @@
     font-weight: 400;
     overflow: hidden;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
   }
 
   body.large #answerText {
-    font-size: 13px;
+    font-size: 14px;
     -webkit-line-clamp: 4;
+    padding-left: 32px;
   }
 
   #sizeBtn {
@@ -264,9 +265,11 @@
 
   pill.addEventListener('click', (e) => {
     if (e.target === sizeBtn || e.target.closest('#thumbGroup')) return;
-    if (!currentPayload) return;
-    window.brioAPI.eyelineExpand(currentPayload);
-    hidePill();
+    // Clicking the pill toggles large/small like the size button
+    isLarge = !isLarge;
+    document.body.classList.toggle('large', isLarge);
+    sizeBtn.textContent = isLarge ? 'S' : 'L';
+    window.brioAPI.eyelineResize(isLarge ? 'large' : 'small');
   });
 
   document.addEventListener('mousemove', () => { window.brioAPI.setEyelineMouseEvents(false); });

@@ -149,7 +149,7 @@
   /* ─── Content area ─────────────────────────────────────── */
   .content-area {
     flex: 1;
-    overflow-y: auto;
+    overflow-y: scroll;
     padding: 18px 22px 24px;
   }
 
@@ -594,10 +594,18 @@
 
     <div class="toggle-row">
       <div>
-        <div class="toggle-label">Live Search <span class="badge-exp">EXPERIMENTAL</span></div>
-        <div class="toggle-sub">Falls back to web when docs have no answer. Adds 4–8s latency.</div>
+        <div class="toggle-label">Live answer web fallback <span class="badge-exp">EXPERIMENTAL</span></div>
+        <div class="toggle-sub">Falls back to web for auto-answers during live transcript when docs have no answer.</div>
       </div>
-      <label class="toggle"><input type="checkbox" id="toggleLive"><span class="toggle-slider"></span></label>
+      <label class="toggle"><input type="checkbox" id="toggleLiveAuto"><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Sidebar web search <span class="badge-exp">EXPERIMENTAL</span></div>
+        <div class="toggle-sub">Enables web search for manual queries in the sidebar, routed by document relevance.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleLiveManual"><span class="toggle-slider"></span></label>
     </div>
 
     <div class="quality-row" id="rowQuality">
@@ -627,13 +635,21 @@
 
     <div class="setting-row">
       <div>
-        <div class="setting-label">Answer model</div>
-        <div class="setting-sub">Model used to generate real-time answer overlays.</div>
+        <div class="setting-label">Live Answer Model</div>
+        <div class="setting-sub">Model used for live auto-answers during calls.</div>
       </div>
       <select class="styled-select" id="ragModelSelect" style="width:180px;">
-        <option value="claude-haiku-4-5-20251001">Fast (Haiku)</option>
+        <option value="claude-haiku-4-5-20251001" selected>Fast (Haiku)</option>
         <option value="claude-sonnet-4-20250514">Accurate (Sonnet)</option>
       </select>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Ignore my own voice</div>
+        <div class="toggle-sub">When on, Kalara won't trigger answers for things you say — only for questions asked by others.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="toggleIgnoreHost"><span class="toggle-slider"></span></label>
     </div>
   </div>
 
@@ -860,6 +876,11 @@
     window.brioAPI.saveDisplayConfig({ showConfidence: toggleConfidence.checked });
   });
 
+  const toggleIgnoreHost = document.getElementById('toggleIgnoreHost');
+  toggleIgnoreHost.addEventListener('change', () => {
+    window.brioAPI.saveIgnoreHostSpeaker(toggleIgnoreHost.checked);
+  });
+
   const eyelineBehaviorSelect = document.getElementById('eyelineBehaviorSelect');
   eyelineBehaviorSelect.addEventListener('change', () => {
     window.brioAPI.saveEyelineBehavior(eyelineBehaviorSelect.value);
@@ -898,11 +919,12 @@
   toggleEngSparkline.addEventListener('change', saveEngagementCfg);
 
   // ── Web Search Config ─────────────────────────────────────────────────────────
-  const toggleLive     = document.getElementById('toggleLive');
-  const togglePreCall  = document.getElementById('togglePreCall');
-  const togglePostCall = document.getElementById('togglePostCall');
-  const rowQuality     = document.getElementById('rowQuality');
-  const qualityPills   = rowQuality.querySelectorAll('.q-pill');
+  const toggleLiveAuto   = document.getElementById('toggleLiveAuto');
+  const toggleLiveManual = document.getElementById('toggleLiveManual');
+  const togglePreCall    = document.getElementById('togglePreCall');
+  const togglePostCall   = document.getElementById('togglePostCall');
+  const rowQuality       = document.getElementById('rowQuality');
+  const qualityPills     = rowQuality.querySelectorAll('.q-pill');
   let liveQuality = 'bestMatch';
 
   qualityPills.forEach(pill => {
@@ -913,8 +935,12 @@
     });
   });
 
+  function updateQualityRowVisibility() {
+    rowQuality.classList.toggle('show', toggleLiveAuto.checked || toggleLiveManual.checked);
+  }
+
   function saveWebSearchCfg() {
-    window.brioAPI.saveWebSearchConfig({ live: toggleLive.checked, liveQuality, preCall: togglePreCall.checked, postCall: togglePostCall.checked });
+    window.brioAPI.saveWebSearchConfig({ liveAuto: toggleLiveAuto.checked, liveManual: toggleLiveManual.checked, liveQuality, preCall: togglePreCall.checked, postCall: togglePostCall.checked });
   }
 
   // ── Rag model ─────────────────────────────────────────────────────────────────
@@ -923,7 +949,8 @@
     window.brioAPI.saveRagModel(ragModelSelect.value);
   });
 
-  toggleLive.addEventListener('change', () => { rowQuality.classList.toggle('show', toggleLive.checked); saveWebSearchCfg(); });
+  toggleLiveAuto.addEventListener('change',   () => { updateQualityRowVisibility(); saveWebSearchCfg(); });
+  toggleLiveManual.addEventListener('change', () => { updateQualityRowVisibility(); saveWebSearchCfg(); });
   togglePreCall.addEventListener('change', saveWebSearchCfg);
   togglePostCall.addEventListener('change', saveWebSearchCfg);
 
@@ -1061,12 +1088,13 @@
 
     // Web search
     const ws = config.webSearch || {};
-    toggleLive.checked     = !!ws.live;
-    togglePreCall.checked  = !!ws.preCall;
-    togglePostCall.checked = !!ws.postCall;
+    toggleLiveAuto.checked   = ws.liveAuto !== false && (ws.liveAuto || !!ws.live); // migrate old 'live' key
+    toggleLiveManual.checked = ws.liveManual !== false && (ws.liveManual || !!ws.live);
+    togglePreCall.checked    = !!ws.preCall;
+    togglePostCall.checked   = !!ws.postCall;
     liveQuality = ws.liveQuality || 'bestMatch';
     qualityPills.forEach(p => p.classList.toggle('active', p.dataset.q === liveQuality));
-    rowQuality.classList.toggle('show', !!ws.live);
+    updateQualityRowVisibility();
 
     // Bot name
     const firstName = (config.googleAuth?.name || '').trim().split(' ')[0];
@@ -1077,6 +1105,7 @@
 
     // Rag model
     ragModelSelect.value = config.ragModel || 'claude-haiku-4-5-20251001';
+    toggleIgnoreHost.checked = config.ignoreHostSpeaker !== false;
 
     // Auto-join
     toggleAutoJoin.checked = !!config.autoJoinMeetings;

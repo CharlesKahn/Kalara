@@ -166,16 +166,16 @@
     bar.style.width = '0%';
     autoDismissTimer = setTimeout(() => {
       bar.style.transition = 'none';
-      window.close();
+      window.brioAPI.botLeftToastDismiss();
     }, seconds * 1000);
   }
 
-  document.getElementById('btnDismiss').addEventListener('click', () => window.close());
+  document.getElementById('btnDismiss').addEventListener('click', () => window.brioAPI.botLeftToastDismiss());
 
   document.getElementById('btnSummary').addEventListener('click', () => {
     if (callId && projectId) {
       window.brioAPI.openCallSummary(callId, projectId);
-      window.close();
+      window.brioAPI.botLeftToastDismiss();
     }
   });
 

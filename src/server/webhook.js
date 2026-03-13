@@ -90,6 +90,11 @@ const anthropic = new (require('@anthropic-ai/sdk'))({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// ─── OpenAI client ─────────────────────────────────────────────────────────────
+const openai = new (require('openai'))({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
 // ─── Projects persistence ──────────────────────────────────────────────────────
 function loadProjects() {
   try {
@@ -104,10 +109,17 @@ function saveProjects(data) {
 
 function loadManifest(projectId) {
   const manifestPath = path.join(PROJECTS_DIR, projectId, 'manifest.json');
+  let entries = [];
   try {
-    if (fs.existsSync(manifestPath)) return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    if (fs.existsSync(manifestPath)) entries = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
   } catch (e) {}
-  return [];
+  const uploadsDir = path.join(PROJECTS_DIR, projectId, 'uploads');
+  const valid = entries.filter(entry => fs.existsSync(path.join(uploadsDir, entry.storedName)));
+  if (valid.length !== entries.length) {
+    console.log(`[manifest] Removed ${entries.length - valid.length} orphaned entries from project ${projectId}`);
+    saveManifest(projectId, valid);
+  }
+  return valid;
 }
 
 function saveManifest(projectId, manifest) {
@@ -175,6 +187,8 @@ let coachingCfg    = {};   // set via setCoachingConfig()
 let preCallCache   = [];   // [{question, answer, sources}] from /recall/prepare
 let postSearchResults = []; // [{id, question, answer, sources}] ready for review
 let projectWeights   = {}; // { projectId: { chunkId: weight } } — in-memory cache
+const embeddingCache = new Map(); // projectId → [{ text, embedding, source }]
+
 
 // ─── Session Manager ────────────────────────────────────────────────────────────
 const sessions = new Map(); // Map<botId, SessionState>
@@ -202,12 +216,17 @@ function createSession(botId, opts) {
     previousProjectId: null,
     callHistoryContext: '',
     historyContextLoaded: false,
+    statusPollInterval: null,
+    hasBeenRecording: false,
+    hostSpeakerId: null,
   });
 }
 
 function getSession(botId) { return sessions.get(botId); }
 
 function endSessionState(botId) {
+  const session = sessions.get(botId);
+  if (session?.statusPollInterval) clearInterval(session.statusPollInterval);
   sessions.delete(botId);
   if (primaryBotId === botId) primaryBotId = [...sessions.keys()].pop() || null;
 }
@@ -216,6 +235,34 @@ function getActiveSession() { return primaryBotId ? sessions.get(primaryBotId) :
 
 // ─── Text extraction ───────────────────────────────────────────────────────────
 const PDF_TIMEOUT_MS = 20000;
+
+async function extractTextWithVision(source, originalName) {
+  const data = Buffer.isBuffer(source) ? source : fs.readFileSync(source);
+  const base64 = data.toString('base64');
+  console.log(`[vision] Extracting text from ${originalName} via GPT-4o PDF input`);
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'file',
+          file: {
+            filename: originalName,
+            file_data: `data:application/pdf;base64,${base64}`,
+          },
+        },
+        { type: 'text', text: 'Extract all text content from this PDF in order, preserving structure. Output only the extracted text.' },
+      ],
+    }],
+    max_tokens: 4096,
+  });
+
+  const text = response.choices[0]?.message?.content || '';
+  console.log(`[vision] Extracted ${text.length} chars from ${originalName}`);
+  return text;
+}
 
 async function extractText(source, mimetype, originalName) {
   const isPdf  = mimetype === 'application/pdf' || originalName.endsWith('.pdf');
@@ -228,6 +275,11 @@ async function extractText(source, mimetype, originalName) {
         pdfParse(buf),
         new Promise((_, rej) => setTimeout(() => rej(new Error('PDF extraction timed out')), PDF_TIMEOUT_MS)),
       ]);
+      console.log(`[vision] checking fallback: length=${d.text?.length}`);
+      if (!d.text || d.text.length < 500) {
+        console.log(`[vision] pdf-parse returned empty — falling back to GPT-4o Vision for ${originalName}`);
+        return extractTextWithVision(source, originalName);
+      }
       return d.text;
     }
     if (isDocx) { const d = await mammoth.extractRawText({ buffer: source }); return d.value; }
@@ -239,6 +291,11 @@ async function extractText(source, mimetype, originalName) {
       pdfParse(buf),
       new Promise((_, rej) => setTimeout(() => rej(new Error('PDF extraction timed out')), PDF_TIMEOUT_MS)),
     ]);
+    console.log(`[vision] checking fallback: length=${d.text?.length}`);
+    if (!d.text || d.text.length < 500) {
+      console.log(`[vision] pdf-parse returned empty — falling back to GPT-4o Vision for ${originalName}`);
+      return extractTextWithVision(source, originalName);
+    }
     return d.text;
   }
   if (isDocx) { const d = await mammoth.extractRawText({ path: source }); return d.value; }
@@ -257,6 +314,18 @@ function chunkText(text, source, chunkSize = 500, overlap = 50) {
     }
   }
   return chunks;
+}
+
+async function generateEmbeddings(chunks) {
+  const resp = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: chunks.map(c => c.text),
+  });
+  return resp.data.map((item, i) => ({
+    chunkIndex: i,
+    text: chunks[i].text,
+    embedding: item.embedding,
+  }));
 }
 
 // ─── Call history ─────────────────────────────────────────────────────────────
@@ -323,6 +392,26 @@ function saveCallSummaryJson(snapshot, summaryText) {
   } catch (e) {
     console.error('[summary] Summary save failed:', e.message);
   }
+}
+
+async function updateProjectKnowledge(projectId, projectName, fullTranscriptBuffer) {
+  if (!fullTranscriptBuffer?.length) return;
+  const knowledgePath = path.join(PROJECTS_DIR, projectId, 'project-knowledge.md');
+  let existing = '';
+  try {
+    if (fs.existsSync(knowledgePath)) existing = fs.readFileSync(knowledgePath, 'utf-8');
+  } catch (e) { return; }
+  const transcript = fullTranscriptBuffer.map(u => `${u.speaker}: ${u.text}`).join('\n');
+  const resp = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 600,
+    system: 'You update a project knowledge base. Extract NEW facts, decisions, people, or context from the transcript not already in the knowledge base. Focus on: names and roles, key decisions, action items, company/product details. If nothing is new, respond with exactly NO_NEW_FACTS. Otherwise respond with dated bullet points (- YYYY-MM-DD: ...) only.',
+    messages: [{ role: 'user', content: `Existing knowledge base:\n${existing || '(empty)'}\n\nTranscript:\n${transcript}` }],
+  });
+  const text = (resp.content[0]?.text || '').trim();
+  if (!text || text === 'NO_NEW_FACTS') return;
+  fs.writeFileSync(knowledgePath, existing ? `${existing}\n\n${text}` : text, 'utf-8');
+  console.log(`[knowledge] Updated project-knowledge.md for ${projectId}`);
 }
 
 function updateCallHistoryIndex(projectId, callId, entry) {
@@ -399,7 +488,7 @@ async function loadCrossProjectContext(participantEmails) {
   const finalEntries = [];
   for (const email of lc) {
     const sorted = (byParticipant[email] || []).sort((a, b) => new Date(b.date) - new Date(a.date));
-    for (const entry of sorted.slice(0, 3)) {
+    for (const entry of sorted.slice(0, 4)) {
       if (seenCallIds.has(entry.callId)) continue;
       seenCallIds.add(entry.callId);
       finalEntries.push(entry);
@@ -467,6 +556,7 @@ async function reloadProjectForSessions(projectId) {
   }
 }
 
+
 // ─── Live web search ───────────────────────────────────────────────────────────
 async function liveWebSearch(question, quality = 'bestMatch') {
   const qualityInstructions = {
@@ -476,9 +566,7 @@ async function liveWebSearch(question, quality = 'bestMatch') {
   };
 
   const systemPrompt = [
-    'You are a real-time pitch assistant helping during a live business call.',
-    'Use web search to find current, accurate information.',
-    'Answer concisely in 2-3 sentences. Be direct with no preamble.',
+    'Answer in 2-3 sentences maximum. Start with the answer immediately — never use preamble like \'I\'ll search\' or \'Based on my search\'. Never use bullet points or numbered lists. Be direct and specific.',
     qualityInstructions[quality] || '',
   ].filter(Boolean).join(' ');
 
@@ -487,10 +575,11 @@ async function liveWebSearch(question, quality = 'bestMatch') {
 
   for (let turn = 0; turn < 5; turn++) {
     const resp = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
       system: systemPrompt,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      tool_choice: { type: 'auto' },
       messages,
     });
 
@@ -526,6 +615,7 @@ async function liveWebSearch(question, quality = 'bestMatch') {
 // ─── RAG query ─────────────────────────────────────────────────────────────────
 async function ragQuery(question, session) {
   const allChunks = [...(session?.docChunks || []), ...(session?.callDocChunks || [])];
+  console.log(`[rag] chunks available: ${allChunks.length} projectId=${session?.projectId || 'none'}`);
   const qWords = question.toLowerCase().split(/\s+/);
   const weights = session?.projectId ? (projectWeights[session.projectId] || {}) : {};
   const scored = allChunks.map(chunk => {
@@ -535,17 +625,35 @@ async function ragQuery(question, session) {
     return { ...chunk, score };
   }).sort((a, b) => b.score - a.score);
 
-  const relevantChunks = scored.slice(0, 4).filter(c => c.score > 0);
+  let relevantChunks = scored.slice(0, 4).filter(c => c.score > 0);
+
+  if (relevantChunks.length === 0 && allChunks.length > 0) {
+    // Semantic fallback: ask Haiku to find relevant chunks by meaning, not keywords
+    console.log('[rag] keyword scoring empty — trying semantic fallback');
+    try {
+      const candidateChunks = allChunks.slice(0, 20);
+      const chunkList = candidateChunks
+        .map((c, i) => `[${i}] ${c.text.slice(0, 300)}`)
+        .join('\n\n');
+      const semResp = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 100,
+        messages: [{ role: 'user', content: `Question: ${question}\n\nDocument chunks:\n${chunkList}\n\nWhich chunk indices (0-based) are most relevant for answering this question? Return ONLY a JSON array of indices, e.g. [0, 3]. Return [] if none are relevant.` }],
+      });
+      const raw = (semResp.content[0]?.text || '').trim();
+      const indices = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] || '[]');
+      if (Array.isArray(indices) && indices.length > 0) {
+        relevantChunks = indices
+          .filter(i => typeof i === 'number' && i >= 0 && i < candidateChunks.length)
+          .slice(0, 4)
+          .map(i => ({ ...candidateChunks[i], score: 1 }));
+      }
+    } catch (e) {
+      console.error('[rag] semantic fallback error:', e.message);
+    }
+  }
 
   if (relevantChunks.length === 0) {
-    if (webSearchCfg.live) {
-      try {
-        const webResult = await liveWebSearch(question, webSearchCfg.liveQuality || 'bestMatch');
-        if (webResult.answer) return webResult;
-      } catch (e) {
-        console.error('[live-search] fallback error:', e.message);
-      }
-    }
     if (webSearchCfg.postCall && session) {
       session.zeroConfidenceLog.push({ question, ts: Date.now() });
     }
@@ -598,7 +706,7 @@ async function ragQuery(question, session) {
     'Answer using ONLY the provided context.',
     'Never begin your response with phrases like "Based on the documents", "According to the context", "From the provided context", or any similar preamble. Answer directly and immediately. Every word must earn its place.',
     'Your response MUST contain exactly two sections separated by the string ---EXPAND--- on its own line.',
-    'SECTION 1 (compact): Start with a short 3-5 word framing phrase followed by a colon (example: "Two revenue vehicles:" or "Three main risks:"). Then put the most essential facts only — maximum 3 lines, each under 15 words. Use line breaks between distinct points.',
+    'SECTION 1 (compact): Displayed on a tiny floating overlay during a live call. Two display sizes exist — small (shows 3 lines) and large (shows 4 lines). Always write exactly 4 lines: Line 1: a 3-5 word framing phrase ending in a colon. Lines 2-3: the 2 most critical concrete facts — numbers, names, key terms — each under 10 words. These must be the most essential points, shown in both small and large mode. Line 4 (only visible in large mode): a single punchy conclusion or so-what statement under 10 words — only visible in large mode. No explanation, no filler.',
     'SECTION 2 (expanded): 3-5 additional lines written as natural spoken talking points — things you would actually say out loud to an investor. Conversational but precise. No jargon, no passive voice, no corporate language. Use line breaks between distinct points.',
     'Format exactly as:\n[compact answer]\n---EXPAND---\n[expanded answer]',
     'If the provided context does not contain enough information to answer the question confidently and specifically, respond with exactly the word SKIP and nothing else.',
@@ -832,21 +940,47 @@ app.get('/projects/:id/docs', (req, res) => {
 
 app.post('/projects/:id/docs/upload', projectUpload.array('files'), async (req, res) => {
   const { id } = req.params;
+  if (!req.files || req.files.length === 0) return res.json({ queued: [] });
+
+  // Add all files to manifest immediately with status: 'processing' so they appear in the UI
   const manifest = loadManifest(id);
-  const results = [];
   for (const file of req.files) {
-    try {
-      const text = await extractText(file.path, file.mimetype, file.originalname);
-      const chunks = chunkText(text, file.originalname);
-      manifest.push({ storedName: file.filename, originalName: file.originalname, uploadedAt: new Date().toISOString(), chunks: chunks.length, size: file.size });
-      results.push({ name: file.originalname, chunks: chunks.length, status: 'ok' });
-    } catch (e) {
-      results.push({ name: file.originalname, status: 'error', error: e.message });
-    }
+    manifest.push({ storedName: file.filename, originalName: file.originalname, uploadedAt: new Date().toISOString(), size: file.size, status: 'processing' });
   }
   saveManifest(id, manifest);
-  await reloadProjectForSessions(id);
-  res.json({ results });
+
+  // Respond immediately
+  res.json({ queued: req.files.map(f => f.originalname) });
+
+  // Extraction and embedding run in the background
+  (async () => {
+    for (const file of req.files) {
+      try {
+        const text = await extractText(file.path, file.mimetype, file.originalname);
+        try { fs.writeFileSync(file.path + '.extracted.txt', text, 'utf-8'); } catch (e) {}
+        const chunks = chunkText(text, file.originalname);
+        generateEmbeddings(chunks).then(embeddings => {
+          try {
+            fs.writeFileSync(file.path + '.embeddings.json', JSON.stringify(embeddings), 'utf-8');
+            console.log(`[embeddings] Generated embeddings for ${file.originalname}`);
+          } catch (e) {
+            console.error(`[embeddings] Failed to save embeddings for ${file.originalname}:`, e.message);
+          }
+        }).catch(e => {
+          console.error(`[embeddings] Failed to generate embeddings for ${file.originalname}:`, e.message);
+        });
+        // Update manifest entry in-place: set chunk count, clear processing status
+        const current = loadManifest(id);
+        const entry = current.find(m => m.storedName === file.filename);
+        if (entry) { entry.chunks = chunks.length; delete entry.status; saveManifest(id, current); }
+        await reloadProjectForSessions(id);
+        embeddingCache.delete(id);
+        webhookCallback?.('doc-ingested', { name: file.originalname, projectId: id });
+      } catch (e) {
+        console.error(`[upload] Failed to process ${file.originalname}:`, e.message);
+      }
+    }
+  })().catch(e => console.error('[upload] Background processing error:', e.message));
 });
 
 app.delete('/projects/:id/docs/:storedName', (req, res) => {
@@ -855,8 +989,11 @@ app.delete('/projects/:id/docs/:storedName', (req, res) => {
   const entry = manifest.find(m => m.storedName === storedName);
   if (!entry) return res.status(404).json({ error: 'not found' });
   const filePath = path.join(PROJECTS_DIR, id, 'uploads', storedName);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  for (const p of [filePath, filePath + '.extracted.txt', filePath + '.embeddings.json']) {
+    try { fs.unlinkSync(p); } catch (e) { if (e.code !== 'ENOENT') console.error(`[delete] Failed to remove ${p}:`, e.message); }
+  }
   saveManifest(id, manifest.filter(m => m.storedName !== storedName));
+  embeddingCache.delete(id);
   reloadProjectForSessions(id).catch(() => {});
   res.json({ ok: true });
 });
@@ -901,6 +1038,10 @@ app.post('/recall/webhook', async (req, res) => {
   if (isParticipantJoin) {
     const participant = data?.data?.participant || data?.participant || {};
     const { id, name, email } = participant;
+    // Identify host speaker
+    if (id && email && email.toLowerCase() === (loadConfig().googleEmail || '').toLowerCase()) {
+      session.hostSpeakerId = id;
+    }
     // Build speakerMap: prefer real name, fall back to email local-part
     if (id) {
       if (name && !/^Speaker\s+\d+$/i.test(name)) {
@@ -963,6 +1104,7 @@ app.post('/recall/webhook', async (req, res) => {
       || (genericMatch ? `Unknown Speaker ${genericMatch[1]}` : 'Unknown');
     const utterance = {
       speaker: resolvedName,
+      speakerId: participantId,
       text: (inner?.words || []).map(w => w.text).join(' ') || inner?.text || '',
       ts: Date.now(),
     };
@@ -973,7 +1115,8 @@ app.post('/recall/webhook', async (req, res) => {
       webhookCallback?.('transcript', utterance);
       coaching.onTranscriptEvent({ ...utterance, ts: Date.now() });
       engagement.onTranscriptEvent({ ...utterance, ts: Date.now() });
-      if (event === 'transcript.data' && isQuestion(utterance.text) && utterance.text.split(' ').length > 4 && Date.now() - (session.lastRagAt || 0) >= 8000) {
+      const isHostUtterance = loadConfig().ignoreHostSpeaker === true && session.hostSpeakerId !== null && utterance.speakerId === session.hostSpeakerId;
+      if (!isHostUtterance && event === 'transcript.data' && isQuestion(utterance.text) && utterance.text.split(' ').length > 4 && Date.now() - (session.lastRagAt || 0) >= 8000) {
         session.lastRagAt = Date.now();
         const result = await ragQuery(utterance.text, session);
         if (result.answer) {
@@ -1016,8 +1159,18 @@ app.post('/recall/webhook', async (req, res) => {
 });
 
 app.post('/recall/start', async (req, res) => {
+  console.log('[recall] Starting session — creating bot...');
   const { meeting_url, project_id, brief, bot_only, meeting_title, organizer_email, calendar_event_id } = req.body;
   if (!meeting_url) return res.status(400).json({ error: 'meeting_url required' });
+
+  // Reuse existing session if one is already active for this meeting URL
+  for (const [botId, session] of sessions) {
+    if (session.meetingUrl === meeting_url) {
+      console.log('[recall] Reusing existing session for meeting URL — botId:', botId);
+      return res.json({ bot_id: botId, call_id: session.currentCallRecord?.id, reused: true });
+    }
+  }
+
   if (sessions.size >= 3) return res.status(429).json({ error: 'Max 3 concurrent sessions' });
 
   // Resolve project: explicit > organizer email heuristic > null (mid-call auto-detect)
@@ -1061,8 +1214,11 @@ app.post('/recall/start', async (req, res) => {
           realtime_endpoints: [{
             type: 'webhook',
             url: `${process.env.WEBHOOK_URL}/recall/webhook`,
-            events: ['transcript.data', 'transcript.partial_data', 'participant_events.join', 'participant_events.update', 'bot.status_change'],
+            events: ['transcript.data', 'transcript.partial_data', 'participant_events.join', 'participant_events.update'],
           }],
+        },
+        automatic_leave: {
+          everyone_left_timeout: 5,
         },
       }),
     });
@@ -1071,6 +1227,7 @@ app.post('/recall/start', async (req, res) => {
       const errMsg = bot.detail || bot.message || bot.error || JSON.stringify(bot);
       return res.status(502).json({ error: `Recall API: ${errMsg}` });
     }
+    console.log('[recall] Bot created:', bot.id);
 
     // Generate a unique call ID for this session
     const callId = crypto.randomUUID();
@@ -1100,6 +1257,32 @@ app.post('/recall/start', async (req, res) => {
       startedAt: new Date().toISOString(),
     };
     upsertCallRecord(session.currentCallRecord);
+
+    // Poll bot status every 10s to detect call end without relying on bot.status_change webhook
+    const recallBaseForPoll = process.env.RECALL_REGION
+      ? `https://${process.env.RECALL_REGION}.recall.ai`
+      : 'https://api.recall.ai';
+    session.statusPollInterval = setInterval(async () => {
+      const currentSession = sessions.get(bot.id);
+      if (!currentSession) { clearInterval(session.statusPollInterval); return; }
+      try {
+        const pollRes = await fetch(`${recallBaseForPoll}/api/v1/bot/${bot.id}/`, {
+          headers: { 'Authorization': `Token ${process.env.RECALL_API_KEY}` },
+        });
+        if (!pollRes.ok) return;
+        const pollData = await pollRes.json();
+        const code = pollData.status_changes?.[pollData.status_changes.length - 1]?.code || pollData.status?.code;
+        console.log('[recall] Poll tick — botId:', bot.id, 'status:', code);
+        if (code === 'in_call_recording') currentSession.hasBeenRecording = true;
+        if (code === 'done' || code === 'call_ended' || code === 'fatal' || (code === 'in_call_not_recording' && currentSession.hasBeenRecording)) {
+          clearInterval(currentSession.statusPollInterval);
+          currentSession.statusPollInterval = null;
+          webhookCallback?.('bot-left-call', { botId: bot.id, transcriptCount: currentSession.fullTranscriptBuffer?.length || 0 });
+        }
+      } catch (e) {
+        // Network error — keep polling
+      }
+    }, 10000);
 
     webhookCallback?.('session-started', {
       botId: bot.id, meetingUrl: meeting_url, meetingTitle: meeting_title?.trim() || null,
@@ -1160,6 +1343,20 @@ app.post('/recall/start-test', async (req, res) => {
   res.json({ bot_id: botId, call_id: callId, status: 'test_session' });
 });
 
+// Test-only: trigger meeting alert with hardcoded data (sends to main via webhookCallback)
+app.post('/recall/test-meeting-alert', (req, res) => {
+  res.sendStatus(200);
+  const startTime = new Date(Date.now() + 8 * 60 * 1000);
+  const meeting = {
+    title: 'Series A Prep — Sequoia Capital',
+    startIso: startTime.toISOString(),
+    endIso: new Date(startTime.getTime() + 60 * 60 * 1000).toISOString(),
+    meetLink: 'https://meet.google.com/test-meeting',
+    organizer: { name: 'Sarah Chen', email: 'sarah@sequoia.com' },
+  };
+  webhookCallback?.('meeting-alert-data', meeting);
+});
+
 // Part 2: Pre-call web research
 app.post('/recall/prepare', async (req, res) => {
   const { brief } = req.body;
@@ -1214,6 +1411,9 @@ app.post('/recall/end', async (req, res) => {
       if (snapshot.fullTranscriptBuffer.length >= 10) {
         const summaryText = await generateCallSummary(snapshot.fullTranscriptBuffer);
         saveCallSummaryJson(snapshot, summaryText);
+        const projName = (loadProjects().projects || []).find(p => p.id === snapshot.projectId)?.name || null;
+        updateProjectKnowledge(snapshot.projectId, projName, snapshot.fullTranscriptBuffer)
+          .catch(e => console.error('[knowledge]', e.message));
         const participantNames = Object.values(snapshot.participantNamesByEmail);
         updateCallHistoryIndex(snapshot.projectId, snapshot.callId, {
           callId: snapshot.callId, date: snapshot.startedAt,
@@ -1360,11 +1560,206 @@ app.post('/coaching/config', (req, res) => {
 // ─── Routes: Query & health ───────────────────────────────────────────────────
 
 app.post('/query', async (req, res) => {
-  const { question } = req.body;
+  const { question, context, manualProjectId } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
+
   const session = getActiveSession();
-  const result = await ragQuery(question, session);
-  res.json(result);
+  const projectId = session?.projectId || manualProjectId || null;
+
+  if (!projectId) {
+    return res.json({ answer: 'Please select a project first.', sources: [], followUps: [] });
+  }
+
+  const questionEmbeddingPromise = openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: [question],
+  });
+
+  let _t = Date.now();
+  console.log(`[query] start — project=${projectId} session=${!!session}`);
+
+  // ── Build context sections ──────────────────────────────────────────────────
+  const contextSections = [];
+
+  // 1. Brief
+  if (session?.brief) {
+    contextSections.push(`CALL BRIEF — HIGHEST PRIORITY INSTRUCTIONS:\n${session.brief}`);
+  }
+
+  // 2. Pre-call research
+  if (preCallCache.length) {
+    const preCallText = preCallCache.map(e => `Topic: ${e.question}\n${e.answer}`).join('\n\n');
+    contextSections.push(`PRE-CALL RESEARCH:\n${preCallText}`);
+  }
+
+  // 3. Past call summaries
+  if (session && session.currentCallRecord?.participantEmails?.length) {
+    try {
+      const historyCtx = await loadCrossProjectContext(session.currentCallRecord.participantEmails);
+      if (historyCtx) contextSections.push(historyCtx);
+    } catch (e) {
+      console.error('[query] cross-project context error:', e.message);
+    }
+  } else if (!session && manualProjectId) {
+    try {
+      const indexPath = path.join(PROJECTS_DIR, manualProjectId, 'call-history', 'call-history-index.json');
+      if (fs.existsSync(indexPath)) {
+        const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+        const sorted = (index.calls || []).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4);
+        const summaryBlocks = [];
+        for (const entry of sorted) {
+          const summaryPath = path.join(PROJECTS_DIR, manualProjectId, 'call-history', `${entry.callId}-summary.json`);
+          if (!fs.existsSync(summaryPath)) continue;
+          try {
+            const s = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+            const date = entry.date
+              ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : 'Unknown date';
+            const names = Array.isArray(entry.participantNames) ? entry.participantNames.join(', ') : (entry.participantEmails || []).join(', ');
+            summaryBlocks.push(`${date} with ${names}:\n${s.summaryText}`);
+          } catch (e) {}
+        }
+        if (summaryBlocks.length) contextSections.push(`PAST CALL SUMMARIES:\n${summaryBlocks.join('\n\n')}`);
+      }
+    } catch (e) {
+      console.error('[query] manual project history error:', e.message);
+    }
+  }
+
+  // 4. Live transcript
+  if (session?.fullTranscriptBuffer?.length) {
+    const transcriptLines = session.fullTranscriptBuffer.map(u => `${u.speaker}: ${u.text}`).join('\n');
+    contextSections.push(`LIVE CALL TRANSCRIPT:\n${transcriptLines}`);
+  }
+
+  // 5. Project documents (embedding-based retrieval)
+  try {
+    let projectEmbeddings = embeddingCache.get(projectId) || null;
+    if (!projectEmbeddings) {
+      const manifest = loadManifest(projectId);
+      const uploadsDir = path.join(PROJECTS_DIR, projectId, 'uploads');
+      const allChunks = [];
+      for (const entry of manifest) {
+        const embeddingsPath = path.join(uploadsDir, entry.storedName + '.embeddings.json');
+        if (!fs.existsSync(embeddingsPath)) continue;
+        try {
+          const raw = JSON.parse(fs.readFileSync(embeddingsPath, 'utf-8'));
+          for (const item of raw) {
+            allChunks.push({ text: item.text, embedding: item.embedding, source: entry.originalName });
+          }
+        } catch (e) {}
+      }
+      projectEmbeddings = allChunks;
+      embeddingCache.set(projectId, projectEmbeddings);
+    }
+
+    if (projectEmbeddings.length) {
+      const qResp = await questionEmbeddingPromise;
+      const qVec = qResp.data[0].embedding;
+
+      function cosineSim(a, b) {
+        let dot = 0, normA = 0, normB = 0;
+        for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; normA += a[i] * a[i]; normB += b[i] * b[i]; }
+        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+      }
+
+      const topChunks = projectEmbeddings
+        .map(chunk => ({ ...chunk, score: cosineSim(qVec, chunk.embedding) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+
+      if (topChunks.length) {
+        contextSections.push(`PROJECT DOCUMENTS:\n${topChunks.map(c => `[${c.source}]\n${c.text}`).join('\n\n')}`);
+      }
+    }
+  } catch (e) {
+    console.error('[query] embedding retrieval error:', e.message);
+  }
+
+  // 6. Project knowledge base
+  try {
+    const knowledgePath = path.join(PROJECTS_DIR, projectId, 'project-knowledge.md');
+    if (fs.existsSync(knowledgePath)) {
+      const kb = fs.readFileSync(knowledgePath, 'utf-8').trim();
+      if (kb) contextSections.push(`PROJECT KNOWLEDGE BASE:\n${kb}`);
+    }
+  } catch (e) {}
+
+  const fullContext = contextSections.join('\n\n---\n\n');
+  console.log(`[query] context built — ${fullContext.length} chars (+${Date.now() - _t}ms)`); _t = Date.now();
+
+  // ── System prompt ───────────────────────────────────────────────────────────
+  const systemPrompt = 'You are a real-time call assistant answering questions during a live call. Answer directly without preamble or introduction. 2-3 sentences maximum unless more detail is genuinely needed. Never reference \'the documents\' or \'the context\'. The call brief, if present, takes highest priority — follow its tone, framing, and positioning instructions above everything else. When questions are about specific participants, use the transcript to answer. If the context is insufficient to answer accurately, say so clearly rather than speculating. Format answers as short bullet points when there are multiple points to make. Each bullet should be one concise line — a speaking point, not a paragraph. Never use markdown bold (no asterisks). 3-5 bullets maximum. If the answer is a single fact, one sentence is fine.';
+
+  // ── Effective question (follow-up context injection) ────────────────────────
+  const effectiveQuestion = context?.previousAnswer
+    ? `Give a direct 2-3 sentence answer only. Do not re-explain background the user already knows.\n\nThe user already knows: ${context.previousAnswer}\n\nNow answer only this follow-up directly, treating the above as assumed knowledge: ${question}`
+    : question;
+
+  // ── Haiku call ──────────────────────────────────────────────────────────────
+  let answer = 'No relevant info found in your documents.';
+  try {
+    const resp = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: `Context:\n${fullContext}\n\nQuestion: ${effectiveQuestion}` }],
+    });
+    answer = (resp.content[0]?.text || '').trim() || answer;
+  } catch (e) {
+    console.error('[query] Sonnet call failed:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+  console.log(`[query] haiku done (+${Date.now() - _t}ms)`); _t = Date.now();
+
+  res.json({ answer, sources: [], followUps: [], routingDecision: 'DOCS' });
+});
+
+app.post('/query/alternatives', async (req, res) => {
+  const { question, previousAnswer } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+
+  // Step 1: ask Claude for 3 alternative phrasings
+  let phrasings = [];
+  try {
+    const pr = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: `Generate 3 alternative phrasings of this question that might surface different information. Return ONLY a valid JSON array of 3 strings.\n\nQuestion: ${question}` }],
+    });
+    const raw = (pr.content[0]?.text || '').trim();
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const parsed = JSON.parse(cleaned.match(/\[[\s\S]*\]/)?.[0] || '[]');
+    if (Array.isArray(parsed)) phrasings = parsed.slice(0, 3).map(String);
+  } catch (e) {
+    console.error('[alternatives] phrasing generation failed:', e.message);
+  }
+  if (!phrasings.length) return res.json({ alternatives: [] });
+
+  // Step 2: search each phrasing and filter out answers too similar to previousAnswer
+  function roughlySimilar(a, b) {
+    if (!a || !b) return false;
+    const stop = new Set(['the','a','an','is','are','was','were','have','has','had','will','would','could','should','what','how','who','when','where','this','that','it','of','in','on','at','to','for','with','and','but','or','not','our']);
+    const words = (s) => s.toLowerCase().split(/\W+/).filter(w => w.length > 3 && !stop.has(w));
+    const setA = new Set(words(a));
+    const wb = words(b);
+    if (!wb.length) return false;
+    return wb.filter(w => setA.has(w)).length / wb.length > 0.45;
+  }
+
+  const alternatives = [];
+  for (const phrasing of phrasings) {
+    try {
+      const r = await liveWebSearch(phrasing, webSearchCfg.liveQuality || 'bestMatch');
+      if (!r.answer || r.answer === 'SKIP') continue;
+      if (roughlySimilar(previousAnswer, r.answer)) continue;
+      alternatives.push({ label: phrasing, answer: r.answer });
+    } catch (e) {
+      console.error('[alternatives] search failed:', e.message);
+    }
+  }
+
+  res.json({ alternatives });
 });
 
 // ─── Google OAuth callback ─────────────────────────────────────────────────────
@@ -1467,6 +1862,54 @@ function startWebhookServer(port, callback, onOAuthComplete) {
     }).catch(e => {
       console.warn('[summary] Haiku model unavailable -- narrative summaries will use fallback text:', e.message);
     });
+
+    // Backfill sidecars (fire and forget)
+    (async () => {
+      // Extract and save .extracted.txt sidecars for any missing files
+      try {
+        const data = loadProjects();
+        for (const project of (data.projects || [])) {
+          const uploadsDir = path.join(PROJECTS_DIR, project.id, 'uploads');
+          if (!fs.existsSync(uploadsDir)) continue;
+          const manifest = loadManifest(project.id);
+          for (const entry of manifest) {
+            const filePath = path.join(uploadsDir, entry.storedName);
+            const sidecarPath = filePath + '.extracted.txt';
+            const embeddingsPath = filePath + '.embeddings.json';
+
+            let text = null;
+
+            // Sidecar backfill (unchanged logic)
+            if (!fs.existsSync(sidecarPath) && fs.existsSync(filePath)) {
+              console.log(`[sidecar] Extracting text for ${entry.originalName}`);
+              try {
+                text = await extractText(filePath, '', entry.originalName);
+                console.log('[sidecar] extracted text length:', text?.length || 0, 'for', entry.originalName);
+                fs.writeFileSync(sidecarPath, text, 'utf-8');
+              } catch (e) {
+                console.error(`[sidecar] Failed to extract ${entry.originalName}:`, e.message);
+              }
+            }
+
+            // Embeddings backfill — runs if sidecar exists but embeddings don't
+            if (!fs.existsSync(embeddingsPath) && fs.existsSync(sidecarPath)) {
+              try {
+                if (!text) text = fs.readFileSync(sidecarPath, 'utf-8');
+                const chunks = chunkText(text, entry.originalName);
+                const embeddings = await generateEmbeddings(chunks);
+                fs.writeFileSync(embeddingsPath, JSON.stringify(embeddings), 'utf-8');
+                console.log(`[embeddings] Backfilled embeddings for ${entry.originalName}`);
+              } catch (e) {
+                console.error(`[embeddings] Backfill failed for ${entry.originalName}:`, e.message);
+              }
+            }
+          }
+        }
+        console.log('[sidecar] Backfill complete');
+      } catch (e) {
+        console.error('[sidecar] Backfill failed:', e.message);
+      }
+    })();
   });
 }
 
